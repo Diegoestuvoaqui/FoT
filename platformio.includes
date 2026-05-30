@@ -1,0 +1,13 @@
+./
+/home/dda/Documents/FoT/include
+/home/dda/Documents/FoT/src
+/home/dda/.platformio/packages/framework-arduino-avr/cores/arduino
+/home/dda/.platformio/packages/framework-arduino-avr/variants/standard
+/home/dda/.platformio/packages/framework-arduino-avr/libraries/EEPROM/src
+/home/dda/.platformio/packages/framework-arduino-avr/libraries/HID/src
+/home/dda/.platformio/packages/framework-arduino-avr/libraries/SPI/src
+/home/dda/.platformio/packages/framework-arduino-avr/libraries/SoftwareSerial/src
+/home/dda/.platformio/packages/framework-arduino-avr/libraries/Wire/src
+/home/dda/.platformio/packages/toolchain-atmelavr/lib/gcc/avr/7.3.0/include-fixed
+/home/dda/.platformio/packages/toolchain-atmelavr/lib/gcc/avr/7.3.0/include
+/home/dda/.platformio/packages/toolchain-atmelavr/avr/include

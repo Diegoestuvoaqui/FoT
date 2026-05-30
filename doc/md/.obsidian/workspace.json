@@ -1,0 +1,192 @@
+{
+  "main": {
+    "id": "9b674f559d5b72d2",
+    "type": "split",
+    "children": [
+      {
+        "id": "6d0752d4448e618b",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "15e5bda61b179e77",
+            "type": "leaf",
+            "state": {
+              "type": "empty",
+              "state": {},
+              "icon": "lucide-file",
+              "title": "Nueva pestaña"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "74ff0ce9bbd16b36",
+    "type": "split",
+    "children": [
+      {
+        "id": "00e6a1d5ca166b8a",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "8b7e874042527bc2",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Explorador de archivos"
+            }
+          },
+          {
+            "id": "70d6113cd5686012",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Buscar"
+            }
+          },
+          {
+            "id": "13de86d1da5c226c",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Marcadores"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "6a8edc3a3fa39db5",
+    "type": "split",
+    "children": [
+      {
+        "id": "7f870b971028bcec",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "2e627fd36c8b6b8a",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "Capítulo 2 – Solución propuesta (Resumen).md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Enlaces entrantes de Capítulo 2 – Solución propuesta (Resumen)"
+            }
+          },
+          {
+            "id": "302bb9f3282f5a94",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "Capítulo 2 – Solución propuesta (Resumen).md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Enlaces salientes de Capítulo 2 – Solución propuesta (Resumen)"
+            }
+          },
+          {
+            "id": "f83137b316909e5e",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Etiquetas"
+            }
+          },
+          {
+            "id": "4b278fe2a7e1c475",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Todas las propiedades"
+            }
+          },
+          {
+            "id": "b7d5621364ee5e2d",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "Capítulo 2 – Solución propuesta (Resumen).md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Esquema de Capítulo 2 – Solución propuesta (Resumen)"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Abrir selector rápido": false,
+      "graph:Abrir vista gráfica": false,
+      "canvas:Crear nuevo lienzo": false,
+      "daily-notes:Abrir la nota de hoy": false,
+      "templates:Insertar plantilla": false,
+      "command-palette:Abrir paleta de comandos": false,
+      "bases:Crear nueva base": false
+    }
+  },
+  "active": "15e5bda61b179e77",
+  "lastOpenFiles": [
+    "Sin título.base",
+    "2026-04-10.md",
+    "Sin título.canvas",
+    "Glosario.md",
+    "\"n-capas\" es un patrón o un estilo?.md",
+    "Direccionalidad, Palabras al Glosario,.md",
+    "Capítulo 2 – Solución propuesta (Resumen).md"
+  ]
+}
