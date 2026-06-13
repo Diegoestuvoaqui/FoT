@@ -1,0 +1,384 @@
+2026-06-12 14:32:00,255 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:32:00,263 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:32:00,263 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:32:00,267 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:32:00,273 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:32:05,489 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:32:05,489 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:32:05,490 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:32:05,493 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:32:05,497 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:32:10,755 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:32:10,756 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:32:10,756 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:32:10,759 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:32:10,762 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:32:15,995 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:32:15,996 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:32:15,996 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:32:16,000 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:32:16,003 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:32:21,237 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:32:21,238 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:32:21,238 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:32:21,242 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:32:21,244 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:32:26,497 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:32:26,498 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:32:26,498 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:32:26,502 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:32:26,505 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:32:31,740 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:32:31,741 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:32:31,741 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:32:31,745 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:32:31,748 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:32:36,990 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:32:36,990 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:32:36,991 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:32:36,994 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:32:36,997 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:32:42,240 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:32:42,240 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:32:42,241 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:32:42,245 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:32:42,247 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:32:47,483 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:32:47,484 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:32:47,484 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:32:47,488 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:32:47,491 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:32:52,734 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:32:52,735 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:32:52,735 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:32:52,738 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:32:52,741 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:32:57,990 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:32:57,991 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:32:57,991 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:32:57,995 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:32:57,998 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:33:03,240 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:33:03,241 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:33:03,241 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:33:03,245 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:33:08,480 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:33:08,481 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:33:08,481 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:33:08,485 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:33:08,488 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:33:13,737 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:33:13,738 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:33:13,739 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:33:13,742 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:33:13,745 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:33:18,990 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:33:18,991 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:33:18,991 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:33:18,994 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:33:18,997 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:33:24,243 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:33:24,244 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:33:24,244 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:33:24,248 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:33:24,251 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:33:29,491 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:33:29,492 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:33:29,492 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:33:29,496 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:33:29,498 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:33:34,741 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:33:34,741 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:33:34,741 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:33:34,745 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:33:34,747 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:33:39,991 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:33:39,991 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:33:39,992 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:33:39,995 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:33:39,998 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:33:45,241 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:33:45,242 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:33:45,242 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:33:45,245 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:33:45,248 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:33:50,496 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:33:50,496 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:33:50,496 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:33:50,500 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:33:50,500 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:33:55,751 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:33:55,751 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:33:55,752 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:33:55,755 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:33:55,757 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:34:00,991 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:34:00,992 INFO __main__ — Base de datos lista en data/fot.db
+2026-06-12 14:34:00,992 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:34:00,996 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:34:00,998 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:38:21,694 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:38:26,987 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:38:32,229 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:38:37,492 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:38:42,764 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:38:48,002 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:38:53,230 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:38:58,500 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:40:12,398 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:40:12,399 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-12 14:40:12,399 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-12 14:40:12,403 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:40:12,461 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:40:12,496 INFO __main__ — UI lista, entrando en mainloop
+2026-06-12 14:41:00,945 INFO domain.memento — Snapshot guardado: Antes de añadir parcela 1234
+2026-06-12 14:41:08,844 INFO domain.memento — Snapshot guardado: Antes de cambiar umbrales en 1234
+2026-06-12 14:41:24,610 INFO __main__ — Cerrando FoT Estación Base
+2026-06-12 14:41:24,959 INFO __main__ — FoT Estación Base cerrada
+2026-06-12 14:48:06,265 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 14:48:06,266 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-12 14:48:06,266 INFO __main__ — Finca cargada: 1 parcelas
+2026-06-12 14:48:06,270 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 14:48:06,312 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 14:48:06,345 INFO __main__ — UI lista, entrando en mainloop
+2026-06-12 14:52:18,109 INFO __main__ — Cerrando FoT Estación Base
+2026-06-12 14:52:18,582 INFO __main__ — FoT Estación Base cerrada
+2026-06-12 15:02:46,670 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 15:02:46,671 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-12 15:02:46,671 INFO __main__ — Finca cargada: 1 parcelas
+2026-06-12 15:02:46,675 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 15:02:46,675 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 15:02:46,751 INFO __main__ — UI lista, entrando en mainloop
+2026-06-12 15:03:12,359 INFO __main__ — Cerrando FoT Estación Base
+2026-06-12 15:03:12,753 INFO __main__ — FoT Estación Base cerrada
+2026-06-12 15:04:49,171 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 15:04:49,172 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-12 15:04:49,172 INFO __main__ — Finca cargada: 1 parcelas
+2026-06-12 15:04:49,177 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 15:04:49,221 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 15:04:49,264 INFO __main__ — UI lista, entrando en mainloop
+2026-06-12 15:05:03,550 INFO __main__ — Cerrando FoT Estación Base
+2026-06-12 15:05:04,243 INFO __main__ — FoT Estación Base cerrada
+2026-06-12 15:44:28,948 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 15:44:28,949 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-12 15:44:28,949 INFO __main__ — Finca cargada: 1 parcelas
+2026-06-12 15:44:28,954 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 15:44:29,005 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 15:44:29,044 INFO __main__ — UI lista, entrando en mainloop
+2026-06-12 15:45:16,637 INFO domain.memento — Snapshot guardado: Antes de añadir parcela 2222
+2026-06-12 15:45:22,054 INFO domain.memento — Snapshot guardado: Antes de eliminar parcela 2222
+2026-06-12 15:45:25,890 INFO domain.memento — Snapshot guardado: Antes de eliminar parcela 1234
+2026-06-12 15:46:30,504 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 15:46:30,505 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-12 15:46:30,505 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-12 15:46:30,510 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 15:46:30,555 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 15:46:30,594 INFO __main__ — UI lista, entrando en mainloop
+2026-06-12 15:46:38,384 INFO domain.memento — Snapshot guardado: Antes de eliminar parcela 2222
+2026-06-12 15:46:40,696 INFO domain.memento — Snapshot guardado: Antes de eliminar parcela 1234
+2026-06-12 15:46:41,619 INFO domain.memento — Snapshot guardado: Snapshot manual
+2026-06-12 15:46:47,102 INFO __main__ — Cerrando FoT Estación Base
+2026-06-12 15:46:47,584 INFO __main__ — FoT Estación Base cerrada
+2026-06-12 15:46:50,207 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 15:46:50,208 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-12 15:46:50,208 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-12 15:46:50,213 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 15:46:50,257 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 15:46:50,296 INFO __main__ — UI lista, entrando en mainloop
+2026-06-12 15:53:21,411 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 15:53:21,412 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-12 15:53:21,413 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-12 15:53:21,418 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 15:53:21,467 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 15:53:21,506 INFO __main__ — UI lista, entrando en mainloop
+2026-06-12 15:53:27,576 INFO domain.memento — Snapshot guardado: Antes de cambiar umbrales en 1234
+2026-06-12 15:53:37,465 INFO domain.memento — Snapshot guardado: Snapshot manual
+2026-06-12 15:53:38,782 INFO domain.memento — Snapshot guardado: Antes de eliminar parcela 1234
+2026-06-12 15:53:44,430 INFO domain.memento — Snapshot guardado: Antes de añadir parcela 1234
+2026-06-12 15:53:47,246 INFO domain.memento — Snapshot guardado: Snapshot manual
+2026-06-12 15:54:38,769 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 15:54:38,770 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-12 15:54:38,771 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-12 15:54:38,777 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 15:54:38,795 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 15:54:38,824 INFO __main__ — UI lista, entrando en mainloop
+2026-06-12 15:54:47,843 INFO domain.memento — Snapshot guardado: Antes de eliminar parcela 1234
+2026-06-12 15:54:54,553 INFO domain.memento — Snapshot guardado: Snapshot manual
+2026-06-12 15:55:04,233 INFO domain.memento — Snapshot guardado: Antes de añadir parcela 1234
+2026-06-12 15:55:10,371 INFO domain.memento — Snapshot guardado: Antes de eliminar parcela 2222
+2026-06-12 15:55:12,352 INFO domain.memento — Snapshot guardado: Antes de eliminar parcela 1234
+2026-06-12 15:55:13,179 INFO domain.memento — Snapshot guardado: Snapshot manual
+2026-06-12 15:55:17,821 INFO domain.memento — Snapshot guardado: Snapshot manual
+2026-06-12 15:55:20,152 INFO __main__ — Cerrando FoT Estación Base
+2026-06-12 15:55:20,846 INFO __main__ — FoT Estación Base cerrada
+2026-06-12 15:55:28,454 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 15:55:28,455 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-12 15:55:28,456 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-12 15:55:28,462 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 15:55:28,503 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 15:55:28,544 INFO __main__ — UI lista, entrando en mainloop
+2026-06-12 15:55:31,611 INFO __main__ — Cerrando FoT Estación Base
+2026-06-12 15:55:32,520 INFO __main__ — FoT Estación Base cerrada
+2026-06-12 15:55:47,399 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 15:55:47,399 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-12 15:55:47,400 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-12 15:55:47,403 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 15:55:47,445 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 15:55:47,481 INFO __main__ — UI lista, entrando en mainloop
+2026-06-12 15:55:52,175 INFO domain.memento — Snapshot guardado: Antes de eliminar parcela 1234
+2026-06-12 15:55:55,469 INFO domain.memento — Snapshot guardado: Antes de eliminar parcela 2222
+2026-06-12 15:55:56,665 INFO domain.memento — Snapshot guardado: Snapshot manual
+2026-06-12 15:55:59,119 INFO __main__ — Cerrando FoT Estación Base
+2026-06-12 15:55:59,468 INFO __main__ — FoT Estación Base cerrada
+2026-06-12 15:56:05,996 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 15:56:05,997 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-12 15:56:05,997 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-12 15:56:06,002 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 15:56:06,052 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 15:56:06,088 INFO __main__ — UI lista, entrando en mainloop
+2026-06-12 15:56:08,045 INFO __main__ — Cerrando FoT Estación Base
+2026-06-12 15:56:08,066 INFO __main__ — FoT Estación Base cerrada
+2026-06-12 16:29:53,559 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 16:29:53,560 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-12 16:29:53,560 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-12 16:29:53,565 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 16:29:53,608 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 16:29:53,659 INFO __main__ — UI lista, entrando en mainloop
+2026-06-12 21:10:15,279 INFO domain.memento — Snapshot guardado: Antes de eliminar parcela 2222
+2026-06-12 21:10:18,351 INFO domain.memento — Snapshot guardado: Antes de eliminar parcela 1234
+2026-06-12 21:10:22,801 INFO domain.memento — Snapshot guardado: Snapshot manual
+2026-06-12 21:10:27,647 INFO __main__ — Cerrando FoT Estación Base
+2026-06-12 21:10:28,466 INFO __main__ — FoT Estación Base cerrada
+2026-06-12 21:10:33,691 INFO __main__ — Arrancando FoT Estación Base
+2026-06-12 21:10:33,692 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-12 21:10:33,693 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-12 21:10:33,697 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-12 21:10:33,742 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-12 21:10:33,783 INFO __main__ — UI lista, entrando en mainloop
+2026-06-12 21:10:37,871 INFO __main__ — Cerrando FoT Estación Base
+2026-06-12 21:10:38,758 INFO __main__ — FoT Estación Base cerrada
+2026-06-13 06:57:31,205 INFO __main__ — Arrancando FoT Estación Base
+2026-06-13 06:57:31,207 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-13 06:57:31,208 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-13 06:57:31,233 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-13 06:57:31,238 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-13 06:57:36,693 INFO __main__ — Arrancando FoT Estación Base
+2026-06-13 06:57:36,694 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-13 06:57:36,694 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-13 06:57:36,699 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-13 06:57:36,702 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-13 06:57:41,946 INFO __main__ — Arrancando FoT Estación Base
+2026-06-13 06:57:41,947 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-13 06:57:41,947 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-13 06:57:41,951 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-13 06:57:42,017 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-13 06:57:42,059 INFO __main__ — UI lista, entrando en mainloop
+2026-06-13 06:57:47,237 INFO __main__ — Cerrando FoT Estación Base
+2026-06-13 06:57:48,034 INFO __main__ — FoT Estación Base cerrada
+2026-06-13 07:06:20,759 INFO __main__ — Arrancando FoT Estación Base
+2026-06-13 07:06:20,760 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-13 07:06:20,760 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-13 07:06:20,765 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-13 07:06:20,809 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-13 07:06:20,849 INFO __main__ — UI lista, entrando en mainloop
+2026-06-13 07:06:24,725 INFO domain.memento — Snapshot guardado: Antes de eliminar parcela 1234
+2026-06-13 07:06:26,099 INFO domain.memento — Snapshot guardado: Snapshot manual
+2026-06-13 07:06:27,185 INFO __main__ — Cerrando FoT Estación Base
+2026-06-13 07:06:27,826 INFO __main__ — FoT Estación Base cerrada
+2026-06-13 07:06:32,417 INFO __main__ — Arrancando FoT Estación Base
+2026-06-13 07:06:32,418 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-13 07:06:32,419 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-13 07:06:32,424 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-13 07:06:32,470 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-13 07:06:32,509 INFO __main__ — UI lista, entrando en mainloop
+2026-06-13 07:06:33,825 INFO __main__ — Cerrando FoT Estación Base
+2026-06-13 07:06:34,483 INFO __main__ — FoT Estación Base cerrada
+2026-06-13 07:09:06,158 INFO __main__ — Arrancando FoT Estación Base
+2026-06-13 07:09:06,159 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-13 07:09:06,159 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-13 07:09:06,164 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-13 07:09:06,215 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-13 07:09:06,258 INFO __main__ — UI lista, entrando en mainloop
+2026-06-13 07:09:15,219 INFO domain.memento — Snapshot guardado: Antes de añadir parcela 7777
+2026-06-13 07:09:16,763 INFO domain.memento — Snapshot guardado: Snapshot manual
+2026-06-13 07:09:26,262 INFO __main__ — Cerrando FoT Estación Base
+2026-06-13 07:09:26,802 INFO __main__ — FoT Estación Base cerrada
+2026-06-13 07:09:28,744 INFO __main__ — Arrancando FoT Estación Base
+2026-06-13 07:09:28,745 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-13 07:09:28,745 INFO __main__ — Finca cargada: 3 parcelas
+2026-06-13 07:09:28,750 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-13 07:09:28,804 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-13 07:09:28,855 INFO __main__ — UI lista, entrando en mainloop
+2026-06-13 07:09:30,551 INFO __main__ — Cerrando FoT Estación Base
+2026-06-13 07:09:30,817 INFO __main__ — FoT Estación Base cerrada
+2026-06-13 08:05:18,966 INFO __main__ — Arrancando FoT Estación Base
+2026-06-13 08:05:18,967 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-13 08:05:18,967 INFO __main__ — Finca cargada: 3 parcelas
+2026-06-13 08:05:18,971 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-13 08:05:19,026 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-13 08:05:19,061 INFO __main__ — UI lista, entrando en mainloop
+2026-06-13 08:05:23,581 INFO __main__ — Cerrando FoT Estación Base
+2026-06-13 08:05:24,043 INFO __main__ — FoT Estación Base cerrada
+2026-06-13 08:05:25,921 INFO __main__ — Arrancando FoT Estación Base
+2026-06-13 08:05:25,922 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-13 08:05:25,922 INFO __main__ — Finca cargada: 3 parcelas
+2026-06-13 08:05:25,927 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-13 08:05:25,976 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-13 08:05:26,022 INFO __main__ — UI lista, entrando en mainloop
+2026-06-13 08:05:29,582 INFO domain.memento — Snapshot guardado: Antes de eliminar parcela 1234
+2026-06-13 08:05:31,419 INFO domain.memento — Snapshot guardado: Antes de eliminar parcela 2222
+2026-06-13 08:05:33,606 INFO domain.memento — Snapshot guardado: Antes de eliminar parcela 7777
+2026-06-13 08:05:34,830 INFO domain.memento — Snapshot guardado: Snapshot manual
+2026-06-13 08:05:37,305 INFO __main__ — Cerrando FoT Estación Base
+2026-06-13 08:05:38,001 INFO __main__ — FoT Estación Base cerrada
+2026-06-13 08:05:40,439 INFO __main__ — Arrancando FoT Estación Base
+2026-06-13 08:05:40,440 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-13 08:05:40,440 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-13 08:05:40,444 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-13 08:05:40,489 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-13 08:05:40,531 INFO __main__ — UI lista, entrando en mainloop
+2026-06-13 08:05:42,923 INFO __main__ — Cerrando FoT Estación Base
+2026-06-13 08:05:43,503 INFO __main__ — FoT Estación Base cerrada
+2026-06-13 08:06:10,528 INFO __main__ — Arrancando FoT Estación Base
+2026-06-13 08:06:10,529 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-13 08:06:10,529 INFO __main__ — Finca cargada: 0 parcelas
+2026-06-13 08:06:10,534 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-13 08:06:10,571 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-13 08:06:10,607 INFO __main__ — UI lista, entrando en mainloop
+2026-06-13 08:06:23,181 INFO domain.memento — Snapshot guardado: Antes de añadir parcela 1234
+2026-06-13 08:06:32,705 INFO domain.memento — Snapshot guardado: Antes de añadir parcela 1233
+2026-06-13 08:06:35,073 INFO domain.memento — Snapshot guardado: Snapshot manual
+2026-06-13 08:06:36,259 INFO __main__ — Cerrando FoT Estación Base
+2026-06-13 08:06:36,615 INFO __main__ — FoT Estación Base cerrada
+2026-06-13 08:06:38,370 INFO __main__ — Arrancando FoT Estación Base
+2026-06-13 08:06:38,371 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-13 08:06:38,371 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-13 08:06:38,377 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-13 08:06:38,421 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-13 08:06:38,465 INFO __main__ — UI lista, entrando en mainloop
+2026-06-13 08:06:44,339 INFO __main__ — Cerrando FoT Estación Base
+2026-06-13 08:06:44,437 INFO __main__ — FoT Estación Base cerrada
+2026-06-13 08:06:45,773 INFO __main__ — Arrancando FoT Estación Base
+2026-06-13 08:06:45,774 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-13 08:06:45,775 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-13 08:06:45,779 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-13 08:06:45,819 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-13 08:06:45,858 INFO __main__ — UI lista, entrando en mainloop
+2026-06-13 08:06:51,897 INFO __main__ — Cerrando FoT Estación Base
+2026-06-13 08:06:52,838 INFO __main__ — FoT Estación Base cerrada
+2026-06-13 08:20:45,613 INFO __main__ — Arrancando FoT Estación Base
+2026-06-13 08:20:45,614 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-13 08:20:45,614 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-13 08:20:45,618 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-13 08:20:45,714 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-13 08:20:45,817 INFO __main__ — UI lista, entrando en mainloop
+2026-06-13 08:20:47,365 INFO __main__ — Cerrando FoT Estación Base
+2026-06-13 08:20:47,762 INFO __main__ — FoT Estación Base cerrada
+2026-06-13 08:20:49,663 INFO __main__ — Arrancando FoT Estación Base
+2026-06-13 08:20:49,664 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-13 08:20:49,665 INFO __main__ — Finca cargada: 2 parcelas
+2026-06-13 08:20:49,670 INFO __main__ — MQTT conectado a localhost:1883
+2026-06-13 08:20:49,705 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-13 08:20:49,744 INFO __main__ — UI lista, entrando en mainloop
+2026-06-13 08:20:51,596 INFO __main__ — Cerrando FoT Estación Base
+2026-06-13 08:20:51,717 INFO __main__ — FoT Estación Base cerrada

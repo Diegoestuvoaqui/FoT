@@ -3,7 +3,14 @@
 #include "StateMonitoring.h"
 #include "StateIrrigating.h"
 #include "StateFault.h"
-#include <Arduino.h>
+// reemplazar: para los test
+//#include <Arduino.h>
+// por:
+#ifdef ARDUINO
+  #include <Arduino.h>
+#else
+  #include "ArduinoMock.h"
+#endif
 
 StateIdle::StateIdle()
     : lastSensorUpdate(0)

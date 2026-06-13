@@ -3,19 +3,25 @@
 #include "StateIdle.h"
 #include "StateMonitoring.h"
 #include "StateFault.h"
+// reemplazar: para los test
+//#include <Arduino.h>
+// por:
+#ifdef ARDUINO
 #include <Arduino.h>
+#else
+#include "ArduinoMock.h"
+#endif
 
 StateIrrigating::StateIrrigating(bool autoOrigin)
     : cameFromAuto(autoOrigin)
-    , startTime(0)
-    , firstTick(true)
-{}
+      , startTime(0)
+      , firstTick(true)
+      , lastSensorUpdate(0) {
+}
 
 
-    
-
-void StateIrrigating::handle(StateMachine& ctx) {
-    // 1. Activar relay siempre (ya está encendido desde la transición, redundante pero seguro)
+void StateIrrigating::handle(StateMachine &ctx) {
+    // 1. Relay siempre encendido
     ctx.turnRelayOn();
 
     // 2. Registrar tiempo de inicio
@@ -24,52 +30,45 @@ void StateIrrigating::handle(StateMachine& ctx) {
         firstTick = false;
     }
 
-    // 3. Lectura periódica de sensores
-    ctx.updateSensors();
+    // 3. Lectura periódica — igual que StateIdle y StateMonitoring
+    if (millis() - lastSensorUpdate >= SENSOR_READ_INTERVAL) {
+        lastSensorUpdate = millis();
+        ctx.updateSensors();
 
-    // 4. Condiciones de salida:
-
-    // a) Humedad alcanzó el máximo
-    if (ctx.getHumidity() >= ctx.getThresholdMax()) {
-        ctx.turnRelayOff();
-        if (cameFromAuto) {
-            ctx.setState(new StateMonitoring());
-        } else {
-            ctx.setState(new StateIdle());
+        // a) Humedad alcanzó el máximo
+        if (ctx.getHumidity() >= ctx.getThresholdMax()) {
+            ctx.turnRelayOff();
+            if (cameFromAuto) ctx.setState(new StateMonitoring());
+            else ctx.setState(new StateIdle());
+            return;
         }
-        return;
+
+        // b) Fallo de sensor
+        if (ctx.hasSensorFault()) {
+            ctx.turnRelayOff();
+            ctx.setState(new StateFault("sensor_invalid"));
+            return;
+        }
     }
 
-    // b) Timeout de seguridad
-    uint32_t elapsed = (millis() - startTime) / 1000UL; // en segundos
+    // 4. Timeout — se evalúa cada tick para ser responsivo
+    uint32_t elapsed = (millis() - startTime) / 1000UL;
     if (elapsed >= ctx.getIrrigationTimeout()) {
         ctx.turnRelayOff();
         ctx.setState(new StateFault("irrigation_timeout"));
         return;
     }
 
-    // c) Comando stop
-    const char* cmd = ctx.getPendingCommand();
+    // 5. Comando stop — también cada tick
+    const char *cmd = ctx.getPendingCommand();
     if (cmd && strncmp(cmd, "stop", 4) == 0) {
         ctx.turnRelayOff();
         ctx.clearPendingCommand();
-        if (cameFromAuto) {
-            ctx.setState(new StateMonitoring());
-        } else {
-            ctx.setState(new StateIdle());
-        }
+        if (cameFromAuto) ctx.setState(new StateMonitoring());
+        else ctx.setState(new StateIdle());
         return;
     }
-
-    // d) Fallo de sensor (3 lecturas inválidas consecutivas en sensor habilitado)
-    if (ctx.hasSensorFault()) {
-        ctx.turnRelayOff();
-        ctx.setState(new StateFault("sensor_invalid"));
-        return;
-    }
-
-
 }
 
 // StateIrrigating.cpp TEST
-const char* StateIrrigating::name() const { return "Irrigating"; }
+const char *StateIrrigating::name() const { return "Irrigating"; }

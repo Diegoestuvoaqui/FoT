@@ -1,0 +1,71 @@
+Collected 1 tests (*)
+
+Processing * in test_fsm environment
+--------------------------------------------------------------------------------
+Building...
+LDF: Library Dependency Finder -> https://bit.ly/configure-pio-ldf
+LDF Modes: Finder ~ deep, Compatibility ~ soft
+Found 2 compatible libraries
+Scanning dependencies...
+Dependency Graph
+|-- Unity @ 2.6.1 (License: MIT, Path: /home/dda/Documents/FoT/.pio/libdeps/test_fsm/Unity)
+Building in test mode
+g++ -o .pio/build/test_fsm/program .pio/build/test_fsm/test/test_StateMachine.o .pio/build/test_fsm/test/unity_config.o -L.pio/build/test_fsm -Wl,--start-group .pio/build/test_fsm/lib1a5/libUnity.a -Wl,--end-group
+/usr/bin/ld: .pio/build/test_fsm/test/test_StateMachine.o: en la función `setUp':
+test_StateMachine.cpp:(.text+0x24): referencia a `StateMachine::StateMachine()' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0xdf): referencia a `StateMachine::addSensor(ISensor*)' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0xf8): referencia a `StateMachine::addSensor(ISensor*)' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0x107): referencia a `StateMachine::applyStartupState()' sin definir
+/usr/bin/ld: .pio/build/test_fsm/test/test_StateMachine.o: en la función `tearDown':
+test_StateMachine.cpp:(.text+0x152): referencia a `StateMachine::~StateMachine()' sin definir
+/usr/bin/ld: .pio/build/test_fsm/test/test_StateMachine.o: en la función `test_idle_to_irrigating_via_command()':
+test_StateMachine.cpp:(.text+0x21f): referencia a `StateMachine::dispatchCommand(char const*, char const*, float, float)' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0x22e): referencia a `StateMachine::tick()' sin definir
+/usr/bin/ld: .pio/build/test_fsm/test/test_StateMachine.o: en la función `test_irrigating_stop_returns_to_idle_when_manual()':
+test_StateMachine.cpp:(.text+0x28c): referencia a `StateMachine::dispatchCommand(char const*, char const*, float, float)' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0x29b): referencia a `StateMachine::tick()' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0x2c7): referencia a `StateMachine::dispatchCommand(char const*, char const*, float, float)' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0x2d6): referencia a `StateMachine::tick()' sin definir
+/usr/bin/ld: .pio/build/test_fsm/test/test_StateMachine.o: en la función `test_idle_to_monitoring()':
+test_StateMachine.cpp:(.text+0x34c): referencia a `StateMachine::dispatchCommand(char const*, char const*, float, float)' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0x35b): referencia a `StateMachine::tick()' sin definir
+/usr/bin/ld: .pio/build/test_fsm/test/test_StateMachine.o: en la función `test_monitoring_irrigates_when_below_threshold()':
+test_StateMachine.cpp:(.text+0x3b9): referencia a `StateMachine::dispatchCommand(char const*, char const*, float, float)' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0x3c8): referencia a `StateMachine::tick()' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0x3f0): referencia a `StateMachine::updateSensors()' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0x3ff): referencia a `StateMachine::tick()' sin definir
+/usr/bin/ld: .pio/build/test_fsm/test/test_StateMachine.o: en la función `test_sensor_fault_three_invalid_readings()':
+test_StateMachine.cpp:(.text+0x461): referencia a `StateMachine::updateSensors()' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0x470): referencia a `StateMachine::tick()' sin definir
+/usr/bin/ld: .pio/build/test_fsm/test/test_StateMachine.o: en la función `test_fault_reset_returns_to_idle()':
+test_StateMachine.cpp:(.text+0x4dc): referencia a `StateMachine::updateSensors()' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0x4eb): referencia a `StateMachine::tick()' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0x521): referencia a `StateMachine::dispatchCommand(char const*, char const*, float, float)' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0x530): referencia a `StateMachine::tick()' sin definir
+/usr/bin/ld: .pio/build/test_fsm/test/test_StateMachine.o: en la función `test_fsm_sensor_disabled_ignored_in_fault_check()':
+test_StateMachine.cpp:(.text+0x8a6): referencia a `StateMachine::setSensorEnabled(SensorType, bool)' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0x8be): referencia a `StateMachine::updateSensors()' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0x8cd): referencia a `StateMachine::tick()' sin definir
+/usr/bin/ld: .pio/build/test_fsm/test/test_StateMachine.o: en la función `test_fsm_thresholds_update()':
+test_StateMachine.cpp:(.text+0x92a): referencia a `StateMachine::updateThresholds(float, float)' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0x939): referencia a `StateMachine::getThresholdMin() const' sin definir
+/usr/bin/ld: test_StateMachine.cpp:(.text+0x971): referencia a `StateMachine::getThresholdMax() const' sin definir
+/usr/bin/ld: .pio/build/test_fsm/lib1a5/libUnity.a(unity.o): en la función `UnityPrintChar':
+unity.c:(.text+0x2f): referencia a `unityOutputChar' sin definir
+/usr/bin/ld: unity.c:(.text+0x46): referencia a `unityOutputChar' sin definir
+/usr/bin/ld: unity.c:(.text+0x50): referencia a `unityOutputChar' sin definir
+/usr/bin/ld: unity.c:(.text+0x67): referencia a `unityOutputChar' sin definir
+/usr/bin/ld: unity.c:(.text+0x71): referencia a `unityOutputChar' sin definir
+/usr/bin/ld: .pio/build/test_fsm/lib1a5/libUnity.a(unity.o):unity.c:(.text+0x7d): más referencias a `unityOutputChar' sin definir a continuación
+collect2: error: ld devolvió el estado de salida 1
+*** [.pio/build/test_fsm/program] Error 1
+Building stage has failed, see errors above. Use `pio test -vvv` option to enable verbose output.
+-------------------- test_fsm:* [ERRORED] Took 0.54 seconds --------------------
+
+=================================== SUMMARY ===================================
+Environment    Test    Status    Duration
+-------------  ------  --------  ------------
+uno            *       SKIPPED
+test_sensors   *       SKIPPED
+test_fsm       *       ERRORED   00:00:00.540
+================== 1 test cases: 0 succeeded in 00:00:00.540 ==================

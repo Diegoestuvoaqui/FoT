@@ -1,0 +1,12 @@
+[Unit]
+Description=FoT Estacion Base
+After=graphical-session.target mosquitto.service
+
+[Service]
+ExecStart=/usr/bin/python3 /home/dda/Documents/FoT/src/station/main.py
+WorkingDirectory=/home/dda/Documents/FoT/src/station
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

@@ -3,13 +3,20 @@
 #include "StateIdle.h"
 #include "StateIrrigating.h"
 #include "StateFault.h"
+// reemplazar: para los test
+//#include <Arduino.h>
+// por:
+#ifdef ARDUINO
 #include <Arduino.h>
+#else
+#include "ArduinoMock.h"
+#endif
 
 StateMonitoring::StateMonitoring()
-    : lastSensorUpdate(0)
-{}
+    : lastSensorUpdate(0) {
+}
 
-void StateMonitoring::handle(StateMachine& ctx) {
+void StateMonitoring::handle(StateMachine &ctx) {
     // 1. Asegurar relay apagado mientras evalúa
     ctx.turnRelayOff();
 
@@ -33,7 +40,7 @@ void StateMonitoring::handle(StateMachine& ctx) {
     }
 
     // 3. Procesar comandos
-    const char* cmd = ctx.getPendingCommand();
+    const char *cmd = ctx.getPendingCommand();
     if (cmd) {
         if (strncmp(cmd, "set_mode_manual", 15) == 0) {
             ctx.setStartInAutoMode(false);
@@ -43,7 +50,7 @@ void StateMonitoring::handle(StateMachine& ctx) {
         // enable/disable/thresholds ya fueron manejados por dispatch
         ctx.clearPendingCommand();
     }
-
-
 }
+
+const char *StateMonitoring::name() const { return "Monitoring"; }
 

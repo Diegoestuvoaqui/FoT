@@ -5,73 +5,64 @@
 #include "StateFault.h"
 #include <string.h>
 
-// TODO: incluir la verdadera EEPROMConfig cuando exista
-// #include "persistence/EEPROMConfig.h"
-
 // --------------------------------------------------------------------------
 // Función auxiliar para mapear cadenas de comandos a SensorType
-static SensorType sensorTypeFromStr(const char* name) {
+static SensorType sensorTypeFromStr(const char *name) {
     if (strncmp(name, "DHT22_TEMP", 10) == 0) return SENSOR_DHT22_TEMP;
-    if (strncmp(name, "DHT22_HUM",   9) == 0) return SENSOR_DHT22_HUM;
-    if (strncmp(name, "SOIL_CAP",    8) == 0) return SENSOR_SOIL_CAP;
-    return (SensorType)255; // no reconocido
+    if (strncmp(name, "DHT22_HUM", 9) == 0) return SENSOR_DHT22_HUM;
+    if (strncmp(name, "SOIL_CAP", 8) == 0) return SENSOR_SOIL_CAP;
+    return (SensorType) 255; // no reconocido
 }
 
 // --------------------------------------------------------------------------
 // Constructor / Destructor
 StateMachine::StateMachine()
     : currentState(nullptr)
-    , sensorCount(0)
-    , humiditySoil(0)
-    , humidityAir(0)
-    , temperature(0)
-    , thresholdMin(20)
-    , thresholdMax(60)
-    , irrigationTimeout(600)       // 10 minutos por defecto
-    , farmerAuthenticated(false)
-    , pendingCmd(nullptr)
-    , sensorFaultFlag(false)
-{
+      , sensorCount(0)
+      , _startInAutoMode(false)
+      , humiditySoil(NAN)
+      , humidityAir(NAN)
+      , temperature(NAN)
+      , thresholdMin(30.0f)
+      , thresholdMax(70.0f)
+      , irrigationTimeout(300)
+      , pendingCmd(nullptr)
+      , sensorFaultFlag(false) {
     memset(invalidCounts, 0, sizeof(invalidCounts));
+    memset(&_config, 0, sizeof(_config)); // solo RAM — applyStartupState() carga EEPROM
 }
 
 StateMachine::~StateMachine() {
     if (currentState) delete currentState;
-    // No liberamos los sensores, la propiedad es externa (los creó la fábrica)
 }
 
 // --------------------------------------------------------------------------
 // Configuración de sensores
-void StateMachine::addSensor(ISensor* sensor) {
+void StateMachine::addSensor(ISensor *sensor) {
     if (sensorCount < MAX_SENSORS) {
         sensors[sensorCount++] = sensor;
     }
 }
 
 void StateMachine::updateSensors() {
-    // Reiniciamos flags
     humiditySoil = NAN;
-    humidityAir  = NAN;
-    temperature  = NAN;
+    humidityAir = NAN;
+    temperature = NAN;
 
     for (uint8_t i = 0; i < sensorCount; i++) {
-        ISensor* s = sensors[i];
+        ISensor *s = sensors[i];
         if (!s->isEnabled()) continue;
 
         float val = s->read();
         switch (s->getType()) {
-            case SENSOR_SOIL_CAP:
-                humiditySoil = val;
+            case SENSOR_SOIL_CAP: humiditySoil = val;
                 break;
-            case SENSOR_DHT22_TEMP:
-                temperature = val;
+            case SENSOR_DHT22_TEMP: temperature = val;
                 break;
-            case SENSOR_DHT22_HUM:
-                humidityAir = val;
+            case SENSOR_DHT22_HUM: humidityAir = val;
                 break;
         }
 
-        // Actualizar contadores de fallo
         if (s->isValid()) {
             invalidCounts[i] = 0;
         } else {
@@ -92,9 +83,7 @@ void StateMachine::checkSensorFault() {
     }
 }
 
-bool StateMachine::hasSensorFault() const {
-    return sensorFaultFlag;
-}
+bool StateMachine::hasSensorFault() const { return sensorFaultFlag; }
 
 void StateMachine::resetSensorFault() {
     memset(invalidCounts, 0, sizeof(invalidCounts));
@@ -103,9 +92,9 @@ void StateMachine::resetSensorFault() {
 
 // --------------------------------------------------------------------------
 // Getters de lecturas
-float StateMachine::getHumidity() const     { return humiditySoil; }
-float StateMachine::getHumidityAir() const  { return humidityAir; }
-float StateMachine::getTemperature() const  { return temperature; }
+float StateMachine::getHumidity() const { return humiditySoil; }
+float StateMachine::getHumidityAir() const { return humidityAir; }
+float StateMachine::getTemperature() const { return temperature; }
 
 // --------------------------------------------------------------------------
 // Umbrales
@@ -115,7 +104,9 @@ float StateMachine::getThresholdMax() const { return thresholdMax; }
 void StateMachine::updateThresholds(float min, float max) {
     thresholdMin = min;
     thresholdMax = max;
-    // TODO: guardar en EEPROM usando EEPROMConfig::save(...)
+    _config.humidityThresholdMin = min;
+    _config.humidityThresholdMax = max;
+    EEPROMConfig::save(_config);
 }
 
 // --------------------------------------------------------------------------
@@ -131,71 +122,61 @@ void StateMachine::setSensorEnabled(SensorType type, bool enabled) {
 // --------------------------------------------------------------------------
 // Relay
 void StateMachine::setRelay(bool on) {
-    pinMode(RELAY_PIN, OUTPUT);
     digitalWrite(RELAY_PIN, on ? RELAY_ON : RELAY_OFF);
 }
 
-void StateMachine::turnRelayOn()  { setRelay(true); }
+void StateMachine::turnRelayOn() { setRelay(true); }
 void StateMachine::turnRelayOff() { setRelay(false); }
-
-// --------------------------------------------------------------------------
-// Autenticación
-bool StateMachine::isFarmerAuthenticated() const { return farmerAuthenticated; }
-void StateMachine::setFarmerAuthenticated(bool v) { farmerAuthenticated = v; }
 
 // --------------------------------------------------------------------------
 // Arranque desde EEPROM
 void StateMachine::applyStartupState() {
-    // TODO: ConfigData cfg = EEPROMConfig::load();
-    // Por ahora usamos valores dummy
-    ConfigData cfg;
-    cfg.startInAutoMode = 0;  // arranca en modo manual
-    cfg.threshold_min   = 20;
-    cfg.threshold_max   = 60;
-    cfg.irrigationTimeout = 600;
-
-    thresholdMin = cfg.threshold_min;
-    thresholdMax = cfg.threshold_max;
-    irrigationTimeout = cfg.irrigationTimeout;
-
-    if (cfg.startInAutoMode) {
-        setState(new StateMonitoring());
-    } else {
-        setState(new StateIdle());
+    bool ok = EEPROMConfig::load(_config);
+    if (!ok) {
+        Serial.println("EEPROM: checksum invalido, se cargaron valores por defecto");
     }
+
+    thresholdMin = _config.humidityThresholdMin;
+    thresholdMax = _config.humidityThresholdMax;
+    irrigationTimeout = _config.irrigationTimeoutSec;
+    _startInAutoMode = _config.startInAutoMode;
+
+    pinMode(RELAY_PIN, OUTPUT);
+    digitalWrite(RELAY_PIN, RELAY_OFF); // garantía: relay apagado al arrancar
+
+    if (_config.startInAutoMode) setState(new StateMonitoring());
+    else setState(new StateIdle());
 }
 
 void StateMachine::setStartInAutoMode(bool v) {
-    // TODO: actualizar EEPROMConfig
+    _startInAutoMode = v;
+    _config.startInAutoMode = v ? 1 : 0;
+    EEPROMConfig::save(_config);
 }
 
 // --------------------------------------------------------------------------
 // Cambio de estado
-void StateMachine::setState(IState* newState) {
-    if (currentState) {
-        delete currentState;
-    }
+void StateMachine::setState(IState *newState) {
+    if (currentState) delete currentState;
     currentState = newState;
 }
 
 void StateMachine::tick() {
-    if (currentState) {
-        currentState->handle(*this);
-    }
+    if (currentState) currentState->handle(*this);
 }
 
 // --------------------------------------------------------------------------
 // Despacho de comandos MQTT
-void StateMachine::dispatchCommand(const char* cmd, const char* param1, float val1, float val2) {
-    // Comandos que la StateMachine maneja directamente
+void StateMachine::dispatchCommand(const char *cmd, const char *param1,
+                                   float val1, float val2) {
     if (strncmp(cmd, "enable_sensor", 13) == 0) {
         SensorType t = sensorTypeFromStr(param1);
-        if ((uint8_t)t != 255) setSensorEnabled(t, true);
+        if ((uint8_t) t != 255) setSensorEnabled(t, true);
         return;
     }
     if (strncmp(cmd, "disable_sensor", 14) == 0) {
         SensorType t = sensorTypeFromStr(param1);
-        if ((uint8_t)t != 255) setSensorEnabled(t, false);
+        if ((uint8_t) t != 255) setSensorEnabled(t, false);
         return;
     }
     if (strncmp(cmd, "set_thresholds", 14) == 0) {
@@ -203,26 +184,22 @@ void StateMachine::dispatchCommand(const char* cmd, const char* param1, float va
         return;
     }
 
-    // El resto se encola para que lo procese el estado actual
-    pendingCmd = cmd;  // asume que cmd permanece válido hasta el siguiente tick
+    pendingCmd = cmd;
 }
 
-const char* StateMachine::getPendingCommand() const { return pendingCmd; }
+const char *StateMachine::getPendingCommand() const { return pendingCmd; }
 void StateMachine::clearPendingCommand() { pendingCmd = nullptr; }
 
 // --------------------------------------------------------------------------
-// Publicación de lecturas (stub)
+// Publicación de lecturas (stub — TODO: integrar con MQTTClient)
 void StateMachine::publishSensorReadings() {
-    // TODO: cuando tengas el cliente MQTT, publicar en
-    //   fot/<parcela>/sensores un JSON con humSoil, humAir, temp
-    // Por ahora, solo lo imprimimos por serial para depuración
-    Serial.print("Suelo:"); Serial.print(humiditySoil);
-    Serial.print(" Aire:"); Serial.print(humidityAir);
-    Serial.print(" Temp:"); Serial.println(temperature);
+    Serial.print("Suelo:");
+    Serial.print(humiditySoil);
+    Serial.print(" Aire:");
+    Serial.print(humidityAir);
+    Serial.print(" Temp:");
+    Serial.println(temperature);
 }
 
 // --------------------------------------------------------------------------
-uint32_t StateMachine::getIrrigationTimeout() const {
-    return irrigationTimeout;
-}
-
+uint32_t StateMachine::getIrrigationTimeout() const { return irrigationTimeout; }
