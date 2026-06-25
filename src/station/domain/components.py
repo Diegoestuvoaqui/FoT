@@ -31,65 +31,32 @@ class IComponente(ABC):
 
 
 # --------------------------------------------------------------------------
-# Hoja — representa un sensor o actuador individual
-# --------------------------------------------------------------------------
-class Dispositivo(IComponente):
-
-    def __init__(self, id: str, name: str, parcela_id: str, tipo: str):
-        """
-        tipo: "sensor" | "actuador"
-        """
-        self._id = id
-        self._name = name
-        self.parcela_id = parcela_id
-        self.tipo = tipo
-        self.last_reading: dict = {}
-
-    def get_id(self) -> str:
-        return self._id
-
-    def get_name(self) -> str:
-        return self._name
-
-    def get_children(self) -> list:
-        return []  # hoja — sin hijos
-
-    def get_latest_reading(self) -> dict:
-        return self.last_reading.copy()
-
-    def update_reading(self, data: dict) -> None:
-        """Actualiza la última lectura conocida del dispositivo."""
-        self.last_reading = data.copy()
-
-    def __repr__(self) -> str:
-        return f"Dispositivo(id={self._id!r}, tipo={self.tipo!r})"
-
-
-# --------------------------------------------------------------------------
-# Nodo intermedio — agrupa dispositivos y refleja el estado del Arduino
+# Nodo intermedio — Parcela (ya no tiene dispositivos hijos)
 # --------------------------------------------------------------------------
 class Parcela(IComponente):
 
     def __init__(self,
                  id: str,
                  name: str,
+                 usuario_id: int,
                  umbral_min: float = 30.0,
                  umbral_max: float = 70.0,
-                 modo: str = "manual"):
+                 modo: str = "manual",
+                 board_id: str | None = None):
         """
         modo: "auto" | "manual"
-        Nota: la fuente de verdad del modo es el Arduino.
-        Este campo solo se usa para mostrar estado en la UI.
+        board_id: ID del Arduino asignado (puede ser None)
         """
         self._id = id
         self._name = name
+        self.usuario_id = usuario_id
         self.umbral_min = umbral_min
         self.umbral_max = umbral_max
         self.modo = modo
-        self._dispositivos: list[Dispositivo] = []
-        self._dispositivos: list[Dispositivo] = []
-        self.fsm_state: str = "Idle"  # ← nueva
-        self.relay_on: bool = False  # ← nueva
+        self.board_id = board_id
+        self.fsm_state: str = "Idle"
+        self.relay_on: bool = False
+        self.last_reading: dict = {}  # lecturas cacheadas del último mensaje
 
     # --- IComponente ---
 
@@ -100,32 +67,21 @@ class Parcela(IComponente):
         return self._name
 
     def get_children(self) -> list:
-        return list(self._dispositivos)
+        return []  # ya no tiene hijos, es "hoja" del composite
 
     def get_latest_reading(self) -> dict:
-        """Agrega las últimas lecturas de todos los dispositivos hijos."""
-        agregado = {"parcela_id": self._id}
-        for d in self._dispositivos:
-            agregado.update(d.get_latest_reading())
-        return agregado
+        """Retorna la última lectura recibida (cacheada)."""
+        return self.last_reading.copy()
 
-    # --- Gestión de dispositivos ---
+    # --- Lecturas ---
 
-    def add_device(self, dispositivo: Dispositivo) -> None:
-        if not any(d.get_id() == dispositivo.get_id() for d in self._dispositivos):
-            self._dispositivos.append(dispositivo)
-
-    def remove_device(self, device_id: str) -> None:
-        self._dispositivos = [
-            d for d in self._dispositivos if d.get_id() != device_id
-        ]
-
-    def get_device(self, device_id: str) -> Dispositivo | None:
-        return next((d for d in self._dispositivos if d.get_id() == device_id), None)
+    def update_reading(self, data: dict) -> None:
+        """Actualiza la última lectura recibida (llamado por DataReceiver)."""
+        self.last_reading = data.copy()
 
     def __repr__(self) -> str:
-        return (f"Parcela(id={self._id!r}, modo={self.modo!r}, "
-                f"dispositivos={len(self._dispositivos)})")
+        return (f"Parcela(id={self._id!r}, usuario_id={self.usuario_id}, "
+                f"board_id={self.board_id!r}, modo={self.modo!r})")
 
 
 # --------------------------------------------------------------------------
@@ -166,8 +122,12 @@ class Finca(IComponente):
     def get_parcela(self, parcela_id: str) -> Parcela | None:
         return next((p for p in self._parcelas if p.get_id() == parcela_id), None)
 
+    def get_parcelas_by_user(self, usuario_id: int) -> list[Parcela]:
+        """Retorna solo las parcelas de un usuario."""
+        return [p for p in self._parcelas if p.usuario_id == usuario_id]
+
     def get_all_readings(self) -> list[dict]:
-        """Recorre el árbol con apply() y recopila lecturas de todas las parcelas."""
+        """Recopila lecturas de todas las parcelas."""
         readings = []
 
         def _collect(nodo: IComponente) -> None:

@@ -35,18 +35,21 @@ class ConfigManager:
     # --------------------------------------------------------------------------
     # Guardar snapshot
     # --------------------------------------------------------------------------
-    def save_snapshot(self, finca: Finca, descripcion: str, db: Database) -> ConfigSnapshot:
+    def save_snapshot(self,
+                      finca: Finca,
+                      descripcion: str,
+                      db: Database,
+                      usuario_id: int | None = None) -> ConfigSnapshot:
         """
         Serializa la jerarquía de parcelas a JSON y la persiste en la base de datos.
-        La UI debe llamar a este método antes de cualquier edición de parcelas.
         """
         state_dict = self._serialize_finca(finca)
         state_json = json.dumps(state_dict, ensure_ascii=False, indent=None)
 
         snapshot = ConfigSnapshot(state=state_json)
         try:
-            db.save_snapshot(descripcion, state_json)
-            logger.info("Snapshot guardado: %s", descripcion)
+            db.save_snapshot(usuario_id, descripcion, state_json)
+            logger.info("Snapshot guardado: %s (usuario=%s)", descripcion, usuario_id)
         except Exception as e:
             logger.error("Error guardando snapshot: %s", e)
 
@@ -55,9 +58,9 @@ class ConfigManager:
     # --------------------------------------------------------------------------
     # Listar snapshots
     # --------------------------------------------------------------------------
-    def list_snapshots(self, db: Database) -> list[dict]:
-        """Retorna todos los snapshots ordenados del más reciente al más antiguo."""
-        return db.get_snapshots()
+    def list_snapshots(self, db: Database, usuario_id: int | None = None) -> list[dict]:
+        """Retorna snapshots del usuario (o todos si es admin con None)."""
+        return db.get_snapshots(usuario_id)
 
     # --------------------------------------------------------------------------
     # Restaurar snapshot
@@ -65,7 +68,6 @@ class ConfigManager:
     def restore_snapshot(self, snapshot_id: int, db: Database) -> dict:
         """
         Retorna el dict deserializado para que la UI pueda reconstruir la jerarquía.
-        No modifica el modelo de dominio directamente — eso es responsabilidad de la UI.
         """
         row = db.get_snapshot(snapshot_id)
         if row is None:
@@ -82,7 +84,7 @@ class ConfigManager:
     # Serialización interna
     # --------------------------------------------------------------------------
     def _serialize_finca(self, finca: Finca) -> dict:
-        """Convierte la jerarquía Finca → Parcelas → Dispositivos a dict."""
+        """Convierte la jerarquía Finca → Parcelas a dict."""
         return {
             "finca_id": finca.get_id(),
             "finca_name": finca.get_name(),
@@ -93,19 +95,13 @@ class ConfigManager:
         }
 
     def _serialize_parcela(self, parcela: Parcela) -> dict:
+        """Serializa una parcela (ya no tiene dispositivos, solo board_id)."""
         return {
             "id": parcela.get_id(),
             "name": parcela.get_name(),
+            "usuario_id": parcela.usuario_id,
             "umbral_min": parcela.umbral_min,
             "umbral_max": parcela.umbral_max,
             "modo": parcela.modo,
-            "dispositivos": [
-                {
-                    "id": d.get_id(),
-                    "name": d.get_name(),
-                    "parcela_id": d.parcela_id,
-                    "tipo": d.tipo,
-                }
-                for d in parcela.get_children()
-            ]
+            "board_id": parcela.board_id,
         }

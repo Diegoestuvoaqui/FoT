@@ -52,11 +52,15 @@ def _mosquitto_installed() -> bool:
     return shutil.which("mosquitto") is not None
 
 
+def _avrdude_installed() -> bool:
+    return shutil.which("avrdude") is not None
+
+
 def _mosquitto_running() -> bool:
     try:
         r = subprocess.run(["pgrep", "-x", "mosquitto"], capture_output=True)
         return r.returncode == 0
-    except Exception:
+    except OSError:
         return False
 
 
@@ -114,6 +118,14 @@ def bootstrap() -> tuple[bool, str]:
             "  sudo apt install mosquitto    # Debian/Ubuntu"
         )
 
+    if not _avrdude_installed():
+        return False, (
+            "avrdude no está instalado.\n"
+            "Instálalo con:\n\n"
+            "  sudo pacman -S avrdude        # Arch\n"
+            "  sudo apt install avrdude      # Debian/Ubuntu"
+        )
+    
     if not _is_configured():
         _configure_mosquitto()
         _create_systemd_service()

@@ -22,112 +22,55 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="5740451e-bc35-4ef1-9cd4-8c579fca7d45" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/service/estacion_base.service" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/firmware/connection/MQTTClient.cpp" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/firmware/connection/MQTTClient.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/firmware/persistence/EEPROMConfig.cpp" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/firmware/persistence/EEPROMConfig.h" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/main.cpp" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/bootstrap.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/connection/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/connection/mqtt_client.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/data/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/data/database.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/domain/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/domain/components.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/domain/memento.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/logic/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/logic/data_receiver.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/main.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/ui/__init__.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/ui/main_window.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/FoT.iml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" />
+      <change afterPath="$PROJECT_DIR$/deepseek.txt" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/station/controller/auth_controller.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/station/domain/boards.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/station/domain/user.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/station/logic/device_scanner.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/station/logic/exporter.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/station/logic/firmware_uploader.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/station/logic/serial_bridge.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/station/service/auth_service.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/station/ui/dialogs/login_dialog.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/station/ui/dialogs/register_dialog.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/station/ui/panels/admin_panel.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/IEEEtran.bst" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/abstrac.aux" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/abstrac.tex" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/agradecimientos.aux" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/agradecimientos.tex" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/algorithm2e.sty" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/anexo.aux" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/anexo.tex" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/appendix.dtx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/appendix.ins" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/authordate1-4.sty" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/authordate1.bst" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/bib_tesis.bib" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/cap1.aux" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/cap1.tex" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/cap2.aux" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/cap2.tex" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/cap3.aux" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/cap3.tex" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/conc.aux" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/conc.tex" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/dec_autoria.aux" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/dec_autoria.tex" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/dedicatoria.aux" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/dedicatoria.tex" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/figuras/membrete-cujae-centrado.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/introduccion.aux" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/introduccion.tex" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/md/&quot;n-capas&quot; es un patrón o un estilo?.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/md/.obsidian/app.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/md/.obsidian/appearance.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/md/.obsidian/core-plugins.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/md/.obsidian/graph.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/md/.obsidian/workspace.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/md/Capítulo 2 – Solución propuesta (Resumen).md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/md/Direccionalidad, Palabras al Glosario,.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/md/FoT — Plan de Programación por Capas.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/md/FoT_Plan_Programacion_v2.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/md/Glosario.md" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/opinion_tutor.aux" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/opinion_tutor.tex" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/portada.aux" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/portada.log" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/portada.tex" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/rec.aux" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/rec.tex" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/resumen.aux" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/resumen.log" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/resumen.tex" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/tesis-if-cujae-apellido-nombre.aux" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/tesis-if-cujae-apellido-nombre.bbl" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/tesis-if-cujae-apellido-nombre.blg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/tesis-if-cujae-apellido-nombre.fdb_latexmk" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/tesis-if-cujae-apellido-nombre.fls" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/tesis-if-cujae-apellido-nombre.idx" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/tesis-if-cujae-apellido-nombre.ilg" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/tesis-if-cujae-apellido-nombre.ind" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/tesis-if-cujae-apellido-nombre.lof" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/tesis-if-cujae-apellido-nombre.log" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/tesis-if-cujae-apellido-nombre.lot" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/tesis-if-cujae-apellido-nombre.out" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/tesis-if-cujae-apellido-nombre.pdf" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/tesis-if-cujae-apellido-nombre.synctex.gz" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/tesis-if-cujae-apellido-nombre.tex" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/tesis-if-cujae-apellido-nombre.toc" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/doc/uml/UML.mdj" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/platformio.ini" beforeDir="false" afterPath="$PROJECT_DIR$/platformio.ini" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/firmware/abstractSensors/ISensor.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/abstractSensors/ISensor.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateFault.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/stateMachine/StateFault.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateFault.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/stateMachine/StateFault.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateIdle.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/stateMachine/StateIdle.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateIrrigating.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/stateMachine/StateIrrigating.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateIrrigating.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/stateMachine/StateIrrigating.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pyproject.toml" beforeDir="false" afterPath="$PROJECT_DIR$/pyproject.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/abstractSensors/DHT22Adapter.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/abstractSensors/DHT11Adapter.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/abstractSensors/DHT22Adapter.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/abstractSensors/DHT11Adapter.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/abstractSensors/SensorFactory.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/abstractSensors/SensorFactory.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/abstractSensors/SensorType.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/abstractSensors/SensorType.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateMachine.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/stateMachine/StateMachine.cpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateMachine.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/stateMachine/StateMachine.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateMonitoring.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/stateMachine/StateMonitoring.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/test/README" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test/mocks/ArduinoMock.cpp" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test/mocks/ArduinoMock.h" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test/mocks/MockSensor.h" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test/sensors_test.cpp" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test/test_StateMachine.cpp" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test/unity_condig.h" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/test/unity_config.cpp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/bootstrap.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/bootstrap.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/connection/mqtt_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/connection/mqtt_client.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/data/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/data/database.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/data/fot.db" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/data/fot.db" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/domain/components.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/domain/components.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/domain/memento.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/domain/memento.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/fot.log" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/fot.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/logic/data_receiver.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/logic/data_receiver.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/dialogs/assign_arduino_dialog.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/dialogs/assign_arduino_dialog.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/dialogs/export_dialog.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/dialogs/export_dialog.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/dialogs/firmware_dialog.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/dialogs/firmware_dialog.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/error_handler.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/error_handler.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/main_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/main_window.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/panels/arduino_panel.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/panels/arduino_panel.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/panels/help_panel.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/panels/help_panel.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/panels/login_panel.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/panels/login_panel.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/panels/main_panel.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/panels/main_panel.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/panels/parcela_detail_panel.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/panels/parcela_detail_panel.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/theme.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/theme.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/widgets/event_log.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/widgets/event_log.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/widgets/parcela_list.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/widgets/parcela_list.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/widgets/sensor_chart.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/widgets/sensor_chart.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/widgets/side_bar.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/widgets/side_bar.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/widgets/status_bar.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/widgets/status_bar.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/widgets/top_bar.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/widgets/top_bar.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/uv.lock" beforeDir="false" afterPath="$PROJECT_DIR$/uv.lock" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -175,6 +118,12 @@
     </option>
   </component>
   <component name="ProblemsViewState">
+    <hideBySeverity>
+      <option value="11" />
+      <option value="14" />
+      <option value="15" />
+      <option value="16" />
+    </hideBySeverity>
     <option name="selectedTabId" value="ProjectErrors" />
   </component>
   <component name="ProjectApplicationVersion">
@@ -184,8 +133,8 @@
     <option name="productBranch" value="Classic" />
   </component>
   <component name="ProjectColorInfo">{
-  &quot;customColor&quot;: &quot;&quot;,
-  &quot;associatedIndex&quot;: 3
+  &quot;associatedIndex&quot;: 6,
+  &quot;fromUser&quot;: true
 }</component>
   <component name="ProjectId" id="3EHrf7ZA3Ks19wY63tjxJXr7gDX" />
   <component name="ProjectLevelVcsManager">
@@ -223,7 +172,7 @@
     &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
     &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
     &quot;run.code.analysis.last.selected.profile&quot;: &quot;aDefault&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.lookFeel&quot;,
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
@@ -235,14 +184,63 @@
       <recent name="$PROJECT_DIR$/src/station/data" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/src/station/compiled" />
       <recent name="$PROJECT_DIR$/src/model" />
     </key>
   </component>
   <component name="RunManager" selected="Python.FoT">
-    <configuration default="true" type="CMakeRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
+    <configuration default="true" type="CLionExternalRunConfiguration" factoryName="Application" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true">
       <method v="2">
-        <option name="com.jetbrains.cidr.execution.CidrBuildBeforeRunTaskProvider$BuildBeforeRunTask" enabled="true" />
+        <option name="CLION.EXTERNAL.BUILD" enabled="true" />
       </method>
+    </configuration>
+    <configuration name="FoT" type="PythonConfigurationType" factoryName="Python">
+      <module name="FoT" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/src" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="DEBUG_JUST_MY_CODE" value="false" />
+      <option name="RUN_TOOL" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/src/station/main.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <configuration name="FoT" type="PythonConfigurationType" factoryName="Python">
+      <module name="FoT" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/src" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="DEBUG_JUST_MY_CODE" value="false" />
+      <option name="RUN_TOOL" value="true" />
+      <option name="SCRIPT_NAME" value="$PROJECT_DIR$/src/station/main.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
     </configuration>
     <configuration name="FoT" type="PythonConfigurationType" factoryName="Python">
       <module name="FoT" />
@@ -268,6 +266,16 @@
       <option name="REDIRECT_INPUT" value="false" />
       <option name="INPUT_FILE" value="" />
       <method v="2" />
+    </configuration>
+    <configuration name="PlatformIO" type="platformio" factoryName="PlatformIO Debug" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="FoT" TARGET_NAME="PlatformIO" CONFIG_NAME="PlatformIO">
+      <method v="2">
+        <option name="PlatformioBuildBeforeRun" enabled="true" />
+      </method>
+    </configuration>
+    <configuration name="PlatformIO" type="platformio" factoryName="PlatformIO Debug" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="FoT" TARGET_NAME="PlatformIO" CONFIG_NAME="PlatformIO">
+      <method v="2">
+        <option name="PlatformioBuildBeforeRun" enabled="true" />
+      </method>
     </configuration>
     <configuration name="PlatformIO" type="platformio" factoryName="PlatformIO Debug" REDIRECT_INPUT="false" ELEVATE="false" USE_EXTERNAL_CONSOLE="false" EMULATE_TERMINAL="false" PASS_PARENT_ENVS_2="true" PROJECT_NAME="FoT" TARGET_NAME="PlatformIO" CONFIG_NAME="PlatformIO">
       <method v="2">
@@ -333,6 +341,9 @@
       <workItem from="1781351648877" duration="592000" />
       <workItem from="1781352364508" duration="1134000" />
       <workItem from="1781353510219" duration="471000" />
+      <workItem from="1781383539057" duration="977000" />
+      <workItem from="1781766495825" duration="198000" />
+      <workItem from="1781767184913" duration="4523000" />
     </task>
     <servers />
   </component>

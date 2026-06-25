@@ -8,8 +8,8 @@
 // --------------------------------------------------------------------------
 // Función auxiliar para mapear cadenas de comandos a SensorType
 static SensorType sensorTypeFromStr(const char *name) {
-    if (strncmp(name, "DHT22_TEMP", 10) == 0) return SENSOR_DHT22_TEMP;
-    if (strncmp(name, "DHT22_HUM", 9) == 0) return SENSOR_DHT22_HUM;
+    if (strncmp(name, "DHT11_TEMP", 10) == 0) return SENSOR_DHT11_TEMP;
+    if (strncmp(name, "DHT11_HUM", 9) == 0) return SENSOR_DHT11_HUM;
     if (strncmp(name, "SOIL_CAP", 8) == 0) return SENSOR_SOIL_CAP;
     return (SensorType) 255; // no reconocido
 }
@@ -57,9 +57,9 @@ void StateMachine::updateSensors() {
         switch (s->getType()) {
             case SENSOR_SOIL_CAP: humiditySoil = val;
                 break;
-            case SENSOR_DHT22_TEMP: temperature = val;
+            case SENSOR_DHT11_TEMP: temperature = val;
                 break;
-            case SENSOR_DHT22_HUM: humidityAir = val;
+            case SENSOR_DHT11_HUM: humidityAir = val;
                 break;
         }
 
@@ -191,14 +191,33 @@ const char *StateMachine::getPendingCommand() const { return pendingCmd; }
 void StateMachine::clearPendingCommand() { pendingCmd = nullptr; }
 
 // --------------------------------------------------------------------------
-// Publicación de lecturas (stub — TODO: integrar con MQTTClient)
+// Publicación de lecturas en JSON (compatible con SerialBridge)
 void StateMachine::publishSensorReadings() {
-    Serial.print("Suelo:");
-    Serial.print(humiditySoil);
-    Serial.print(" Aire:");
-    Serial.print(humidityAir);
-    Serial.print(" Temp:");
-    Serial.println(temperature);
+    char buf[160];
+    char airStr[8], tempStr[8];
+
+    dtostrf(isnan(humidityAir) ? 0.0f : humidityAir, 4, 1, airStr);
+    dtostrf(isnan(temperature) ? 0.0f : temperature, 4, 1, tempStr);
+
+    const char *stName = currentState ? currentState->name() : "unknown";
+
+    if (isnan(humiditySoil)) {
+        snprintf(buf, sizeof(buf),
+            "{\"hum_suelo\":null,\"hum_aire\":%s,\"temp\":%s,\"relay\":%d,\"state\":\"%s\"}",
+            airStr, tempStr,
+            digitalRead(RELAY_PIN) == RELAY_ON ? 1 : 0,
+            stName);
+    } else {
+        char soilStr[8];
+        dtostrf(humiditySoil, 4, 1, soilStr);
+        snprintf(buf, sizeof(buf),
+            "{\"hum_suelo\":%s,\"hum_aire\":%s,\"temp\":%s,\"relay\":%d,\"state\":\"%s\"}",
+            soilStr, airStr, tempStr,
+            digitalRead(RELAY_PIN) == RELAY_ON ? 1 : 0,
+            stName);
+    }
+
+    Serial.println(buf);
 }
 
 // --------------------------------------------------------------------------

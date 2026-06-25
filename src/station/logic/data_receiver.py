@@ -1,7 +1,8 @@
+# logic/data_receiver.py
 import logging
 
 from data.database import Database
-from domain.components import Finca, Dispositivo
+from domain.components import Finca
 
 logger = logging.getLogger(__name__)
 
@@ -12,8 +13,12 @@ class DataReceiver:
     No evalúa umbrales, no publica comandos, no tiene lógica de riego.
     """
 
-    def __init__(self, db: Database, finca: Finca):
+    def __init__(self, db: Database, finca: Finca | None = None):
         self._db = db
+        self._finca = finca
+
+    def set_finca(self, finca: Finca) -> None:
+        """Asigna la finca después de la autenticación del usuario."""
         self._finca = finca
 
     # --------------------------------------------------------------------------
@@ -43,21 +48,22 @@ class DataReceiver:
         except Exception as e:
             logger.error("Error guardando lectura de %s: %s", parcela_id, e)
 
-        # 2. Actualizar modelo de dominio
+        # 2. Actualizar modelo de dominio directamente en la parcela
+        if self._finca is None:
+            logger.debug("Finca no asignada aún, lectura solo en BD")
+            return
+
         parcela = self._finca.get_parcela(parcela_id)
         if parcela is None:
             logger.warning("Lectura recibida de parcela desconocida: %s", parcela_id)
             return
 
-        # Busca el dispositivo sensor de suelo y le pasa la lectura completa
-        sensor = parcela.get_device(f"{parcela_id}-sensor")
-        if sensor and isinstance(sensor, Dispositivo):
-            sensor.update_reading(data)
-        else:
-            # Si no existe un dispositivo registrado, la lectura queda solo en DB
-            logger.debug("Sin dispositivo en memoria para parcela %s", parcela_id)
+        parcela.update_reading(data)
 
     def _handle_estado(self, parcela_id: str, data: dict) -> None:
+        if self._finca is None:
+            return
+
         parcela = self._finca.get_parcela(parcela_id)
         if parcela is None:
             logger.warning("Estado recibido de parcela desconocida: %s", parcela_id)

@@ -1,0 +1,4769 @@
+➜  station git:(main) ✗ treecat "*.py"
+=== ÁRBOL DE ARCHIVOS ===
+.
+├── bootstrap.py
+├── connection
+│   ├── __init__.py
+│   └── mqtt_client.py
+├── data
+│   ├── database.py
+│   └── __init__.py
+├── domain
+│   ├── boards.py
+│   ├── components.py
+│   ├── __init__.py
+│   └── memento.py
+├── help
+│   └── help_text.py
+├── logic
+│   ├── data_receiver.py
+│   ├── db_verifier.py
+│   ├── device_scanner.py
+│   ├── exporter.py
+│   ├── firmware_uploader.py
+│   ├── __init__.py
+│   └── serial_bridge.py
+├── main.py
+└── ui
+    ├── dialogs
+    │   ├── add_parcela_dialog.py
+    │   ├── assign_arduino_dialog.py
+    │   ├── export_dialog.py
+    │   ├── firmware_dialog.py
+    │   └── __init__.py
+    ├── error_handler.py
+    ├── __init__.py
+    ├── main_window.py
+    ├── panels
+    │   ├── arduino_panel.py
+    │   ├── help_panel.py
+    │   ├── __init__.py
+    │   ├── login_panel.py
+    │   ├── main_panel.py
+    │   └── parcela_detail_panel.py
+    ├── theme.py
+    └── widgets
+        ├── event_log.py
+        ├── __init__.py
+        ├── parcela_list.py
+        ├── sensor_chart.py
+        ├── side_bar.py
+        ├── status_bar.py
+        └── top_bar.py
+
+10 directories, 40 files
+
+=== CONTENIDO ===
+
+### ./bootstrap.py ###
+import os
+import shutil
+import subprocess
+import time
+from pathlib import Path
+
+# --------------------------------------------------------------------------
+# Rutas
+# --------------------------------------------------------------------------
+STATION_DIR = Path(__file__).parent
+CONFIG_DIR = Path.home() / ".config" / "fot"
+SENTINEL = CONFIG_DIR / ".configured"
+MOSQ_CONF = CONFIG_DIR / "mosquitto.conf"
+MOSQ_LOG = CONFIG_DIR / "mosquitto.log"
+SERVICE_DIR = Path.home() / ".config" / "systemd" / "user"
+SERVICE_FILE = SERVICE_DIR / "estacion_base.service"
+
+# --------------------------------------------------------------------------
+# Contenido de la config de Mosquitto (sin sudo — config local de usuario)
+# --------------------------------------------------------------------------
+_MOSQ_CONF = f"""\
+listener 1883
+allow_anonymous true
+log_dest file {MOSQ_LOG}
+log_type error
+log_type warning
+"""
+
+# --------------------------------------------------------------------------
+# Contenido del servicio systemd de usuario
+# --------------------------------------------------------------------------
+_SERVICE = f"""\
+[Unit]
+Description=FoT Estacion Base
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/python3 {STATION_DIR}/main.py
+WorkingDirectory={STATION_DIR}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+"""
+
+
+# --------------------------------------------------------------------------
+# Checks
+# --------------------------------------------------------------------------
+def _mosquitto_installed() -> bool:
+    return shutil.which("mosquitto") is not None
+
+
+def _mosquitto_running() -> bool:
+    try:
+        r = subprocess.run(["pgrep", "-x", "mosquitto"], capture_output=True)
+        return r.returncode == 0
+    except OSError:
+        return False
+
+
+def _is_configured() -> bool:
+    return SENTINEL.exists()
+
+
+# --------------------------------------------------------------------------
+# Acciones de setup
+# --------------------------------------------------------------------------
+def _configure_mosquitto() -> None:
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    MOSQ_CONF.write_text(_MOSQ_CONF)
+
+
+def _start_mosquitto() -> None:
+    if _mosquitto_running():
+        return
+    subprocess.Popen(
+        ["mosquitto", "-c", str(MOSQ_CONF), "-d"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    time.sleep(1)  # dar tiempo al broker para que abra el puerto
+
+
+def _create_systemd_service() -> None:
+    SERVICE_DIR.mkdir(parents=True, exist_ok=True)
+    SERVICE_FILE.write_text(_SERVICE)
+    subprocess.run(["systemctl", "--user", "daemon-reload"], check=False)
+    subprocess.run(["systemctl", "--user", "enable", "estacion_base"], check=False)
+    # loginctl enable-linger para que arranque sin sesión abierta
+    subprocess.run(["loginctl", "enable-linger", os.getenv("USER", "")], check=False)
+
+
+def _write_sentinel() -> None:
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    SENTINEL.touch()
+
+
+# --------------------------------------------------------------------------
+# Punto de entrada público
+# --------------------------------------------------------------------------
+def bootstrap() -> tuple[bool, str]:
+    """
+    Verifica y configura el entorno en la primera ejecución.
+    Retorna (ok: bool, mensaje: str).
+    ok=False significa que falta un requisito que el usuario debe instalar.
+    """
+    if not _mosquitto_installed():
+        return False, (
+            "Mosquitto no está instalado.\n"
+            "Instálalo con:\n\n"
+            "  sudo pacman -S mosquitto      # Arch\n"
+            "  sudo apt install mosquitto    # Debian/Ubuntu"
+        )
+
+    if not _is_configured():
+        _configure_mosquitto()
+        _create_systemd_service()
+        _write_sentinel()
+
+    # En cada arranque — asegurar que mosquitto esté corriendo
+    # (puede haberse detenido tras un reinicio del sistema)
+    if not _mosquitto_running():
+        _start_mosquitto()
+
+    if not _mosquitto_running():
+        return False, (
+            "No se pudo arrancar Mosquitto.\n"
+            f"Revisa el log en:\n  {MOSQ_LOG}"
+        )
+
+    return True, "OK"
+
+### ./connection/__init__.py ###
+
+### ./connection/mqtt_client.py ###
+import json
+import logging
+
+import paho.mqtt.client as mqtt
+
+logger = logging.getLogger(__name__)
+
+
+class MQTTEventBus:
+    def __init__(self, broker_ip: str, broker_port: int = 1883):
+        self._broker_ip = broker_ip
+        self._broker_port = broker_port
+        self._observers: list = []
+        self._client: mqtt.Client | None = None
+
+    def register(self, observer) -> None:
+        if observer not in self._observers:
+            self._observers.append(observer)
+
+    def unregister(self, observer) -> None:
+        self._observers = [o for o in self._observers if o is not observer]
+
+    def _notify(self, topic: str, data: dict) -> None:
+        for observer in self._observers:
+            try:
+                observer.on_event(topic, data)
+            except Exception as e:
+                logger.error("Error en observer %s: %s", type(observer).__name__, e)
+
+    def start(self) -> None:
+        self._client = mqtt.Client()
+        assert self._client is not None
+        self._client.on_connect = self._on_connect
+        self._client.on_message = self._on_message
+        self._client.connect(self._broker_ip, self._broker_port, keepalive=60)
+        self._client.loop_start()
+
+    def stop(self) -> None:
+        if self._client:
+            self._client.loop_stop()
+            self._client.disconnect()
+            self._client = None
+
+    # Firma exacta que espera paho — prefijo _ en los no usados
+    def _on_connect(self, client: mqtt.Client, _userdata: object,
+                    _flags: dict, rc: int) -> None:
+        if rc == 0:
+            client.subscribe("fot/+/sensores", qos=1)
+            client.subscribe("fot/+/estado", qos=1)
+            logger.info("MQTT conectado a %s:%s", self._broker_ip, self._broker_port)
+        else:
+            logger.warning("MQTT conexión rechazada, rc=%s", rc)
+
+    def _on_message(self, _client: mqtt.Client, _userdata: object,
+                    message: mqtt.MQTTMessage) -> None:
+        try:
+            data = json.loads(message.payload.decode("utf-8"))
+        except json.JSONDecodeError as e:
+            logger.warning("Payload no es JSON válido en %s: %s", message.topic, e)
+            return
+        self._notify(message.topic, data)
+
+    def publish(self, topic: str, payload: dict) -> None:
+        if self._client:
+            self._client.publish(topic, json.dumps(payload), qos=1)
+        else:
+            logger.warning("publish() llamado sin cliente activo — topic: %s", topic)
+
+### ./data/database.py ###
+import sqlite3
+import threading
+from datetime import datetime
+
+
+class Database:
+
+    def __init__(self, db_path: str = "data/fot.db"):
+        self._conn = sqlite3.connect(db_path, check_same_thread=False)
+        self._conn.row_factory = sqlite3.Row  # filas accesibles como dict
+        self._lock = threading.Lock()
+
+    # --------------------------------------------------------------------------
+    # Inicialización del esquema
+    # --------------------------------------------------------------------------
+    def initialize(self) -> None:
+        with self._lock:
+            cur = self._conn.cursor()
+            cur.executescript("""
+                              CREATE TABLE IF NOT EXISTS parcelas
+                              (
+                                  id
+                                  TEXT
+                                  PRIMARY
+                                  KEY,
+                                  name
+                                  TEXT
+                                  NOT
+                                  NULL,
+                                  umbral_min
+                                  REAL
+                                  DEFAULT
+                                  30.0,
+                                  umbral_max
+                                  REAL
+                                  DEFAULT
+                                  70.0,
+                                  modo
+                                  TEXT
+                                  DEFAULT
+                                  'manual',
+                                  created_at
+                                  TEXT
+                                  DEFAULT (
+                                  datetime
+                              (
+                                  'now'
+                              ))
+                                  );
+
+                              CREATE TABLE IF NOT EXISTS dispositivos
+                              (
+                                  id
+                                  TEXT
+                                  PRIMARY
+                                  KEY,
+                                  parcela_id
+                                  TEXT
+                                  NOT
+                                  NULL
+                                  REFERENCES
+                                  parcelas
+                              (
+                                  id
+                              ),
+                                  name TEXT NOT NULL,
+                                  tipo TEXT NOT NULL
+                                  );
+
+                              CREATE TABLE IF NOT EXISTS lecturas
+                              (
+                                  id
+                                  INTEGER
+                                  PRIMARY
+                                  KEY
+                                  AUTOINCREMENT,
+                                  parcela_id
+                                  TEXT
+                                  NOT
+                                  NULL,
+                                  hum_suelo
+                                  REAL,
+                                  hum_aire
+                                  REAL,
+                                  temp
+                                  REAL,
+                                  ts_arduino
+                                  INTEGER,
+                                  ts_base
+                                  TEXT
+                                  DEFAULT (
+                                  datetime
+                              (
+                                  'now'
+                              ))
+                                  );
+
+                              CREATE TABLE IF NOT EXISTS eventos
+                              (
+                                  id
+                                  INTEGER
+                                  PRIMARY
+                                  KEY
+                                  AUTOINCREMENT,
+                                  parcela_id
+                                  TEXT
+                                  NOT
+                                  NULL,
+                                  tipo
+                                  TEXT
+                                  NOT
+                                  NULL,
+                                  descripcion
+                                  TEXT,
+                                  ts
+                                  TEXT
+                                  DEFAULT (
+                                  datetime
+                              (
+                                  'now'
+                              ))
+                                  );
+
+                              CREATE TABLE IF NOT EXISTS configuracion_snapshots
+                              (
+                                  id
+                                  INTEGER
+                                  PRIMARY
+                                  KEY
+                                  AUTOINCREMENT,
+                                  descripcion
+                                  TEXT,
+                                  datos_json
+                                  TEXT
+                                  NOT
+                                  NULL,
+                                  ts
+                                  TEXT
+                                  DEFAULT (
+                                  datetime
+                              (
+                                  'now'
+                              ))
+                                  );
+                              """)
+            self._conn.commit()
+
+    # --------------------------------------------------------------------------
+    # Lecturas de sensores
+    # --------------------------------------------------------------------------
+    def save_reading(self, parcela_id: str, data: dict) -> None:
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO lecturas (parcela_id, hum_suelo, hum_aire, temp, ts_arduino)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    parcela_id,
+                    data.get("hum_suelo"),
+                    data.get("hum_aire"),
+                    data.get("temp"),
+                    data.get("ts"),
+                ),
+            )
+            self._conn.commit()
+
+    def purge_old_readings(self, days: int = 30) -> None:
+        """Elimina lecturas anteriores a N días. Llamar una vez al día desde main.py."""
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM lecturas WHERE ts_base < datetime('now', ?)",
+                (f"-{days} days",),
+            )
+            self._conn.commit()
+
+    # --------------------------------------------------------------------------
+    # Eventos
+    # --------------------------------------------------------------------------
+    def save_event(self, parcela_id: str, tipo: str, descripcion: str = "") -> None:
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO eventos (parcela_id, tipo, descripcion)
+                VALUES (?, ?, ?)
+                """,
+                (parcela_id, tipo, descripcion),
+            )
+            self._conn.commit()
+
+    # --------------------------------------------------------------------------
+    # Parcelas
+    # --------------------------------------------------------------------------
+    def get_parcelas(self) -> list[dict]:
+        with self._lock:
+            cur = self._conn.execute("SELECT * FROM parcelas ORDER BY created_at")
+            return [dict(row) for row in cur.fetchall()]
+
+    def save_parcela(self, parcela: dict) -> None:
+        """UPSERT — inserta o actualiza si el id ya existe."""
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO parcelas (id, name, umbral_min, umbral_max, modo)
+                VALUES (:id, :name, :umbral_min, :umbral_max, :modo) ON CONFLICT(id) DO
+                UPDATE SET
+                    name = excluded.name,
+                    umbral_min = excluded.umbral_min,
+                    umbral_max = excluded.umbral_max,
+                    modo = excluded.modo
+                """,
+                parcela,
+            )
+            self._conn.commit()
+
+    def get_parcela(self, parcela_id: str) -> dict | None:
+        """Retorna un diccionario con los datos de una parcela, o None si no existe."""
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT * FROM parcelas WHERE id = ?", (parcela_id,)
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    # --------------------------------------------------------------------------
+    # Snapshots de configuración
+    # --------------------------------------------------------------------------
+    def save_snapshot(self, descripcion: str, datos_json: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO configuracion_snapshots (descripcion, datos_json)
+                VALUES (?, ?)
+                """,
+                (descripcion, datos_json),
+            )
+            self._conn.commit()
+
+    def get_snapshots(self) -> list[dict]:
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT * FROM configuracion_snapshots ORDER BY id DESC"
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+    def get_snapshot(self, snapshot_id: int) -> dict | None:
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT * FROM configuracion_snapshots WHERE id = ?",
+                (snapshot_id,),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    # --------------------------------------------------------------------------
+    # Cierre limpio
+    # --------------------------------------------------------------------------
+    def close(self) -> None:
+        with self._lock:
+            self._conn.close()
+
+    def delete_parcela(self, parcela_id: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM parcelas WHERE id = ?",
+                (parcela_id,)
+            )
+            self._conn.commit()
+
+    def get_readings(self, parcela_id: str,
+                     limit: int = 100,
+                     start: datetime | None = None,  # ← agregar
+                     end: datetime | None = None) -> list[dict]:
+        query = "SELECT * FROM lecturas WHERE parcela_id = ?"
+        params: list = [parcela_id]
+        if start:
+            query += " AND ts_base >= ?"
+            params.append(start.strftime("%Y-%m-%d"))
+        if end:
+            query += " AND ts_base <= ?"
+            params.append(end.strftime("%Y-%m-%d"))
+        query += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        with self._lock:
+            cur = self._conn.execute(query, params)
+            return [dict(row) for row in cur.fetchall()]
+
+    def get_events(self, parcela_id: str,
+                   limit: int = 50,
+                   start: datetime | None = None,  # ← agregar
+                   end: datetime | None = None) -> list[dict]:
+        query = "SELECT * FROM eventos WHERE parcela_id = ?"
+        params: list = [parcela_id]
+        if start:
+            query += " AND ts >= ?"
+            params.append(start.strftime("%Y-%m-%d"))
+        if end:
+            query += " AND ts <= ?"
+            params.append(end.strftime("%Y-%m-%d"))
+        query += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        with self._lock:
+            cur = self._conn.execute(query, params)
+            return [dict(row) for row in cur.fetchall()]
+
+### ./data/__init__.py ###
+
+### ./domain/boards.py ###
+# domain/boards.py (ejemplo)
+class Board:
+    def __init__(self, board_id: str, conn: str = "unknown", status: str = "Desconectada",
+                 parcela: str | None = None, firmware_version: str | None = None,
+                 conn_module: str = "", port: str = ""):
+        self.id = board_id
+        self.conn = conn  # usb, wifi, bluetooth
+        self.status = status  # Conectada, Sin asignar, Desconectada
+        self.parcela = parcela  # ID de parcela o None
+        self.firmware_version = firmware_version
+        self.conn_module = conn_module  # W5100, ESP-01, HC-05, etc.
+        self.port = port
+
+### ./domain/components.py ###
+from abc import ABC, abstractmethod
+from typing import Callable
+
+
+# --------------------------------------------------------------------------
+# Clase abstracta — interfaz del Composite
+# --------------------------------------------------------------------------
+class IComponente(ABC):
+
+    @abstractmethod
+    def get_id(self) -> str:
+        pass
+
+    @abstractmethod
+    def get_name(self) -> str:
+        pass
+
+    @abstractmethod
+    def get_latest_reading(self) -> dict:
+        pass
+
+    @abstractmethod
+    def get_children(self) -> list:
+        pass
+
+    def apply(self, operation: Callable) -> None:
+        """Aplica operation a este nodo y recursivamente a todos sus hijos."""
+        operation(self)
+        for child in self.get_children():
+            child.apply(operation)
+
+
+# --------------------------------------------------------------------------
+# Hoja — representa un sensor o actuador individual
+# --------------------------------------------------------------------------
+class Dispositivo(IComponente):
+
+    def __init__(self, id: str, name: str, parcela_id: str, tipo: str):
+        """
+        tipo: "sensor" | "actuador"
+        """
+        self._id = id
+        self._name = name
+        self.parcela_id = parcela_id
+        self.tipo = tipo
+        self.last_reading: dict = {}
+
+    def get_id(self) -> str:
+        return self._id
+
+    def get_name(self) -> str:
+        return self._name
+
+    def get_children(self) -> list:
+        return []  # hoja — sin hijos
+
+    def get_latest_reading(self) -> dict:
+        return self.last_reading.copy()
+
+    def update_reading(self, data: dict) -> None:
+        """Actualiza la última lectura conocida del dispositivo."""
+        self.last_reading = data.copy()
+
+    def __repr__(self) -> str:
+        return f"Dispositivo(id={self._id!r}, tipo={self.tipo!r})"
+
+
+# --------------------------------------------------------------------------
+# Nodo intermedio — agrupa dispositivos y refleja el estado del Arduino
+# --------------------------------------------------------------------------
+class Parcela(IComponente):
+
+    def __init__(self,
+                 id: str,
+                 name: str,
+                 umbral_min: float = 30.0,
+                 umbral_max: float = 70.0,
+                 modo: str = "manual"):
+        """
+        modo: "auto" | "manual"
+        Nota: la fuente de verdad del modo es el Arduino.
+        Este campo solo se usa para mostrar estado en la UI.
+        """
+        self._id = id
+        self._name = name
+        self.umbral_min = umbral_min
+        self.umbral_max = umbral_max
+        self.modo = modo
+        self._dispositivos: list[Dispositivo] = []
+        self._dispositivos: list[Dispositivo] = []
+        self.fsm_state: str = "Idle"  # ← nueva
+        self.relay_on: bool = False  # ← nueva
+
+    # --- IComponente ---
+
+    def get_id(self) -> str:
+        return self._id
+
+    def get_name(self) -> str:
+        return self._name
+
+    def get_children(self) -> list:
+        return list(self._dispositivos)
+
+    def get_latest_reading(self) -> dict:
+        """Agrega las últimas lecturas de todos los dispositivos hijos."""
+        agregado = {"parcela_id": self._id}
+        for d in self._dispositivos:
+            agregado.update(d.get_latest_reading())
+        return agregado
+
+    # --- Gestión de dispositivos ---
+
+    def add_device(self, dispositivo: Dispositivo) -> None:
+        if not any(d.get_id() == dispositivo.get_id() for d in self._dispositivos):
+            self._dispositivos.append(dispositivo)
+
+    def remove_device(self, device_id: str) -> None:
+        self._dispositivos = [
+            d for d in self._dispositivos if d.get_id() != device_id
+        ]
+
+    def get_device(self, device_id: str) -> Dispositivo | None:
+        return next((d for d in self._dispositivos if d.get_id() == device_id), None)
+
+    def __repr__(self) -> str:
+        return (f"Parcela(id={self._id!r}, modo={self.modo!r}, "
+                f"dispositivos={len(self._dispositivos)})")
+
+
+# --------------------------------------------------------------------------
+# Raíz — contiene todas las parcelas de la finca
+# --------------------------------------------------------------------------
+class Finca(IComponente):
+
+    def __init__(self, id: str, name: str):
+        self._id = id
+        self._name = name
+        self._parcelas: list[Parcela] = []
+
+    # --- IComponente ---
+
+    def get_id(self) -> str:
+        return self._id
+
+    def get_name(self) -> str:
+        return self._name
+
+    def get_children(self) -> list:
+        return list(self._parcelas)
+
+    def get_latest_reading(self) -> dict:
+        return {"finca_id": self._id, "parcelas": self.get_all_readings()}
+
+    # --- Gestión de parcelas ---
+
+    def add_parcela(self, parcela: Parcela) -> None:
+        if not any(p.get_id() == parcela.get_id() for p in self._parcelas):
+            self._parcelas.append(parcela)
+
+    def remove_parcela(self, parcela_id: str) -> None:
+        self._parcelas = [
+            p for p in self._parcelas if p.get_id() != parcela_id
+        ]
+
+    def get_parcela(self, parcela_id: str) -> Parcela | None:
+        return next((p for p in self._parcelas if p.get_id() == parcela_id), None)
+
+    def get_all_readings(self) -> list[dict]:
+        """Recorre el árbol con apply() y recopila lecturas de todas las parcelas."""
+        readings = []
+
+        def _collect(nodo: IComponente) -> None:
+            if isinstance(nodo, Parcela):
+                readings.append(nodo.get_latest_reading())
+
+        self.apply(_collect)
+        return readings
+
+    def __repr__(self) -> str:
+        return f"Finca(id={self._id!r}, parcelas={len(self._parcelas)})"
+
+### ./domain/__init__.py ###
+
+### ./domain/memento.py ###
+import json
+import logging
+from datetime import datetime
+
+from data.database import Database
+from domain.components import Finca, Parcela
+
+logger = logging.getLogger(__name__)
+
+
+# --------------------------------------------------------------------------
+# Memento — contiene el estado serializado en un momento dado
+# --------------------------------------------------------------------------
+class ConfigSnapshot:
+
+    def __init__(self, state: str, timestamp: str = ""):
+        self._state = state
+        self._timestamp = timestamp or datetime.now().isoformat(timespec="seconds")
+
+    def get_state(self) -> str:
+        return self._state
+
+    def get_timestamp(self) -> str:
+        return self._timestamp
+
+    def __repr__(self) -> str:
+        return f"ConfigSnapshot(ts={self._timestamp!r}, bytes={len(self._state)})"
+
+
+# --------------------------------------------------------------------------
+# ConfigManager — Originator + Caretaker en uno
+# --------------------------------------------------------------------------
+class ConfigManager:
+
+    # --------------------------------------------------------------------------
+    # Guardar snapshot
+    # --------------------------------------------------------------------------
+    def save_snapshot(self, finca: Finca, descripcion: str, db: Database) -> ConfigSnapshot:
+        """
+        Serializa la jerarquía de parcelas a JSON y la persiste en la base de datos.
+        La UI debe llamar a este método antes de cualquier edición de parcelas.
+        """
+        state_dict = self._serialize_finca(finca)
+        state_json = json.dumps(state_dict, ensure_ascii=False, indent=None)
+
+        snapshot = ConfigSnapshot(state=state_json)
+        try:
+            db.save_snapshot(descripcion, state_json)
+            logger.info("Snapshot guardado: %s", descripcion)
+        except Exception as e:
+            logger.error("Error guardando snapshot: %s", e)
+
+        return snapshot
+
+    # --------------------------------------------------------------------------
+    # Listar snapshots
+    # --------------------------------------------------------------------------
+    def list_snapshots(self, db: Database) -> list[dict]:
+        """Retorna todos los snapshots ordenados del más reciente al más antiguo."""
+        return db.get_snapshots()
+
+    # --------------------------------------------------------------------------
+    # Restaurar snapshot
+    # --------------------------------------------------------------------------
+    def restore_snapshot(self, snapshot_id: int, db: Database) -> dict:
+        """
+        Retorna el dict deserializado para que la UI pueda reconstruir la jerarquía.
+        No modifica el modelo de dominio directamente — eso es responsabilidad de la UI.
+        """
+        row = db.get_snapshot(snapshot_id)
+        if row is None:
+            logger.warning("Snapshot %s no encontrado", snapshot_id)
+            return {}
+
+        try:
+            return json.loads(row["datos_json"])
+        except json.JSONDecodeError as e:
+            logger.error("Snapshot %s contiene JSON inválido: %s", snapshot_id, e)
+            return {}
+
+    # --------------------------------------------------------------------------
+    # Serialización interna
+    # --------------------------------------------------------------------------
+    def _serialize_finca(self, finca: Finca) -> dict:
+        """Convierte la jerarquía Finca → Parcelas → Dispositivos a dict."""
+        return {
+            "finca_id": finca.get_id(),
+            "finca_name": finca.get_name(),
+            "parcelas": [
+                self._serialize_parcela(p)
+                for p in finca.get_children()
+            ]
+        }
+
+    def _serialize_parcela(self, parcela: Parcela) -> dict:
+        return {
+            "id": parcela.get_id(),
+            "name": parcela.get_name(),
+            "umbral_min": parcela.umbral_min,
+            "umbral_max": parcela.umbral_max,
+            "modo": parcela.modo,
+            "dispositivos": [
+                {
+                    "id": d.get_id(),
+                    "name": d.get_name(),
+                    "parcela_id": d.parcela_id,
+                    "tipo": d.tipo,
+                }
+                for d in parcela.get_children()
+            ]
+        }
+
+### ./help/help_text.py ###
+"""
+help/help_text.py
+Contenido de la ayuda en español.
+Se importa como una cadena desde HelpPanel.
+"""
+
+HELP_TEXT = """
+============================================================
+                    FoT — Farm of Things
+============================================================
+
+INTRODUCCIÓN
+------------
+FoT es un sistema de control de riego automatizado para pequeñas parcelas.
+La estación base se comunica con las placas Arduino (por USB, Bluetooth o WiFi)
+y te permite monitorear y controlar el riego desde una interfaz gráfica.
+
+PANELES DE LA APLICACIÓN
+-------------------------
+• Panel Principal: muestra todas las parcelas, sus lecturas en tiempo real
+  y un gráfico histórico. Desde aquí podés cambiar umbrales, modo de operación
+  y activar/desactivar el riego manualmente.
+
+• Gestor de Arduinos: lista las placas detectadas (USB, WiFi o Bluetooth),
+  permite asignar una placa a una parcela, actualizar el firmware y ver
+  los periféricos conectados (sensores, actuadores, módulos de red).
+
+• Exportar: guarda los datos históricos (lecturas o eventos) en formato CSV o JSON.
+
+• Ayuda: este mismo panel.
+
+PRIMEROS PASOS
+---------------
+1. Conectá un Arduino a la estación base por USB (o asegurate de que esté
+   enviando datos por MQTT/WiFi).
+2. En el Panel Principal, hacé clic en "+ Añadir parcela" y completá
+   los campos (ID y nombre). El ID puede ser automático (parcela-XXXX).
+3. Andá al Gestor de Arduinos. La placa debería aparecer en la lista.
+   Seleccionala y presioná "Asignar a parcela" para vincularla.
+4. Volvé al Panel Principal, seleccioná la parcela y verás sus lecturas.
+   Podés cambiar el modo a "Automático" para que el sistema riegue solo
+   cuando la humedad del suelo baje del umbral mínimo.
+
+MENSAJES DE ERROR Y SOLUCIONES
+-------------------------------
+• "No se pudo cambiar el modo de operación."
+  → Verificá que la placa esté conectada y que el broker MQTT esté activo.
+• "No se pudo activar el riego."
+  → La parcela puede estar en estado de fallo. Revisá el log de eventos.
+• "Los umbrales deben ser números entre 0 y 100."
+  → Asegurate de ingresar valores válidos (ej. 30 y 70).
+• "Ya existe una parcela con ese ID o nombre."
+  → Usá un identificador único, por ejemplo "parcela-0001".
+• "Error al leer el sensor DHT22 en la placa FTDI_A403."
+  → Verificá el cableado del sensor de temperatura/humedad.
+• "No se pudo conectar con la placa en /dev/ttyUSB0."
+  → Revisá que el cable USB esté firme y que tengas permisos sobre el puerto.
+
+GLOSARIO DE TÉRMINOS
+---------------------
+• Sistema de control: la lógica que decide cuándo regar (antes llamada FSM).
+• Modo reposo: la parcela no realiza acciones automáticas (anterior Idle).
+• Modo automático: el sistema monitorea y riega según los umbrales.
+• Regando: estado activo de la bomba de riego.
+• Fallo del sistema: error en sensores o comunicación (Fault).
+• ID de parcela: identificador único de la parcela.
+• Humedad del suelo: porcentaje de agua en la tierra.
+• Humedad del ambiente: humedad relativa del aire.
+• Temperatura: temperatura ambiente en grados Celsius.
+• Parcelas: conjunto de zonas de cultivo (antes "Finca Principal").
+• Instantánea de configuración: copia de seguridad de los ajustes actuales.
+• Servidor de mensajes: el broker MQTT (Mosquitto) que enruta los datos.
+• Conexión en red: comunicación por WiFi/MQTT.
+• Bomba de riego: actuador que controla el paso de agua.
+• Umbral: valor límite para activar/desactivar el riego.
+• Tiempo encendida: segundos desde el último arranque de la placa.
+"""
+
+### ./logic/data_receiver.py ###
+import logging
+
+from data.database import Database
+from domain.components import Finca, Dispositivo
+
+logger = logging.getLogger(__name__)
+
+
+class DataReceiver:
+    """
+    Observer concreto — solo persiste datos y actualiza el modelo de dominio.
+    No evalúa umbrales, no publica comandos, no tiene lógica de riego.
+    """
+
+    def __init__(self, db: Database, finca: Finca):
+        self._db = db
+        self._finca = finca
+
+    # --------------------------------------------------------------------------
+    # Interfaz Observer
+    # --------------------------------------------------------------------------
+    def on_event(self, topic: str, data: dict) -> None:
+        try:
+            parcela_id = topic.split("/")[1]
+        except IndexError:
+            logger.warning("Tópico con formato inesperado: %s", topic)
+            return
+
+        if topic.endswith("/sensores"):
+            self._handle_sensores(parcela_id, data)
+        elif topic.endswith("/estado"):
+            self._handle_estado(parcela_id, data)
+        else:
+            logger.debug("Tópico no manejado por DataReceiver: %s", topic)
+
+    # --------------------------------------------------------------------------
+    # Handlers privados
+    # --------------------------------------------------------------------------
+    def _handle_sensores(self, parcela_id: str, data: dict) -> None:
+        # 1. Persistir en base de datos
+        try:
+            self._db.save_reading(parcela_id, data)
+        except Exception as e:
+            logger.error("Error guardando lectura de %s: %s", parcela_id, e)
+
+        # 2. Actualizar modelo de dominio
+        parcela = self._finca.get_parcela(parcela_id)
+        if parcela is None:
+            logger.warning("Lectura recibida de parcela desconocida: %s", parcela_id)
+            return
+
+        # Busca el dispositivo sensor de suelo y le pasa la lectura completa
+        sensor = parcela.get_device(f"{parcela_id}-sensor")
+        if sensor and isinstance(sensor, Dispositivo):
+            sensor.update_reading(data)
+        else:
+            # Si no existe un dispositivo registrado, la lectura queda solo en DB
+            logger.debug("Sin dispositivo en memoria para parcela %s", parcela_id)
+
+    def _handle_estado(self, parcela_id: str, data: dict) -> None:
+        parcela = self._finca.get_parcela(parcela_id)
+        if parcela is None:
+            logger.warning("Estado recibido de parcela desconocida: %s", parcela_id)
+            return
+
+        # 1. Actualizar modo y estado FSM en el modelo de dominio
+        state = data.get("state", "")
+        if state in ("Monitoring",):
+            parcela.modo = "auto"
+        elif state in ("Idle",):
+            parcela.modo = "manual"
+        # Irrigating y Fault no cambian el modo — solo reflejan un estado transitorio
+
+        parcela.fsm_state = state  # atributo dinámico — la UI lo lee para el color
+        parcela.relay_on = data.get("relay", False)
+
+        # 2. Persistir evento de fallo
+        if state == "Fault":
+            try:
+                self._db.save_event(parcela_id, "fault", str(data))
+            except Exception as e:
+                logger.error("Error guardando evento fault de %s: %s", parcela_id, e)
+
+### ./logic/db_verifier.py ###
+"""
+logic/db_verifier.py
+Verifica que una operación de escritura en la base de datos se haya aplicado correctamente.
+"""
+import logging
+from data.database import Database
+
+logger = logging.getLogger(__name__)
+
+
+def verify_parcela_saved(db: Database, parcela_id: str, expected: dict) -> bool:
+    """
+    Comprueba que la parcela con parcela_id tenga los campos de expected.
+    expected debe contener las columnas que queremos verificar (ej: umbral_min, umbral_max).
+    Retorna True si coinciden.
+    """
+    parcela = db.get_parcela(parcela_id)  # Asumimos que get_parcela devuelve un dict o None
+    if parcela is None:
+        return False
+    for key, value in expected.items():
+        if parcela.get(key) != value:
+            return False
+    return True
+
+### ./logic/device_scanner.py ###
+"""
+logic/device_scanner.py
+Hilo daemon que escanea puertos USB cada 3 segundos y notifica cambios.
+"""
+import logging
+import threading
+import time
+
+import serial.tools.list_ports
+
+logger = logging.getLogger(__name__)
+
+
+class USBScanner(threading.Thread):
+    """
+    Escanea puertos seriales y avisa de placas nuevas/desconectadas.
+    Uso:
+        scanner = USBScanner(on_new_board=callback, interval=3)
+        scanner.start()
+    """
+
+    def __init__(self, on_new_board=None, on_remove_board=None, interval=3):
+        super().__init__(daemon=True)
+        self._on_new_board = on_new_board  # callback(port_info)
+        self._on_remove_board = on_remove_board  # callback(port_info)
+        self._interval = interval
+        self._running = False
+        self._known_ports = set()
+
+    def run(self):
+        self._running = True
+        while self._running:
+            try:
+                ports = list(serial.tools.list_ports.comports())
+
+                # Solo puertos que sean ttyUSB o ttyACM con número de serie
+                # Ignora ttyS* (puertos nativos del sistema, no son Arduinos)
+                current = set()
+                for p in ports:
+                    is_arduino_port = ("ttyUSB" in p.device or "ttyACM" in p.device)
+                    has_serial = bool(p.serial_number)
+                    if is_arduino_port and has_serial:
+                        current.add(p.device)
+
+                added = current - self._known_ports
+                removed = self._known_ports - current
+
+                for dev in added:
+                    port = next(p for p in ports if p.device == dev)
+                    logger.info(f"Nuevo Arduino en: {port.device} - {port.description}")
+                    if self._on_new_board:
+                        self._on_new_board(port)
+
+                for dev in removed:
+                    logger.info(f"Arduino desconectado: {dev}")
+                    if self._on_remove_board:
+                        self._on_remove_board(dev)
+
+                self._known_ports = current
+
+            except Exception as e:
+                logger.error(f"Error en escáner USB: {e}")
+
+            time.sleep(self._interval)
+
+    def stop(self):
+        self._running = False
+
+### ./logic/exporter.py ###
+"""
+logic/exporter.py
+Exportación de datos a CSV y JSON.
+
+Uso:
+    exporter = DataExporter(db)
+    exporter.export_readings(parcela_id, start, end, fmt="csv", filepath="datos.csv")
+    exporter.export_events(parcela_id, start, end, fmt="json", filepath="eventos.json")
+"""
+from __future__ import annotations
+
+import csv
+import json
+from datetime import datetime
+from pathlib import Path
+
+from data.database import Database
+
+
+class DataExporter:
+    def __init__(self, db: Database):
+        self._db = db
+
+    # ------------------------------------------------------------------
+    # Lecturas de sensores
+    # ------------------------------------------------------------------
+    def export_readings(self, parcela_id: str,
+                        start: datetime | None = None,
+                        end: datetime | None = None,
+                        fmt: str = "csv",
+                        filepath: str | Path = "lecturas.csv") -> bool:
+        """
+        Exporta las lecturas de sensores de una parcela en un rango de fechas.
+        Retorna True si se escribió correctamente.
+        """
+        rows = self._db.get_readings(parcela_id, start=start, end=end)
+        if not rows:
+            return False
+
+        if fmt == "json":
+            return self._write_json(filepath, rows)
+        else:
+            return self._write_csv(filepath, rows,
+                                   fieldnames=["ts", "hum_suelo", "hum_aire", "temp"])
+
+    # ------------------------------------------------------------------
+    # Eventos
+    # ------------------------------------------------------------------
+    def export_events(self, parcela_id: str,
+                      start: datetime | None = None,
+                      end: datetime | None = None,
+                      fmt: str = "csv",
+                      filepath: str | Path = "eventos.csv") -> bool:
+        """
+        Exporta el historial de eventos de una parcela.
+        """
+        rows = self._db.get_events(parcela_id, start=start, end=end)
+        if not rows:
+            return False
+
+        if fmt == "json":
+            return self._write_json(filepath, rows)
+        else:
+            return self._write_csv(filepath, rows,
+                                   fieldnames=["ts", "tipo", "descripcion"])
+
+    # ------------------------------------------------------------------
+    # Configuración actual (snapshot)
+    # ------------------------------------------------------------------
+    def export_config(self, parcela_id: str,
+                      fmt: str = "json",
+                      filepath: str | Path = "config.json") -> bool:
+        """
+        Exporta la configuración actual de una parcela (umbrales, modo, etc.).
+        """
+        parcela = self._db.get_parcela(parcela_id)
+        if not parcela:
+            return False
+        data = {
+            "id": parcela.get("id"),
+            "name": parcela.get("name"),
+            "umbral_min": parcela.get("umbral_min"),
+            "umbral_max": parcela.get("umbral_max"),
+            "modo": parcela.get("modo"),
+            "exported_at": datetime.now().isoformat(),
+        }
+        if fmt == "json":
+            return self._write_json(filepath, [data])
+        else:
+            return self._write_csv(filepath, [data],
+                                   fieldnames=["id", "name", "umbral_min", "umbral_max", "modo"])
+
+    # ------------------------------------------------------------------
+    # Helpers internos
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _write_csv(filepath: str | Path, rows: list[dict],  # ← tipos explícitos
+                   fieldnames: list[str]) -> bool:
+        try:
+            with open(filepath, "w", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+                writer.writeheader()
+                for r in rows:
+                    writer.writerow(r)
+            return True
+        except OSError:
+            return False
+
+    @staticmethod
+    def _write_json(filepath: str | Path, rows: list[dict]) -> bool:  # ← tipos explícitos
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(rows, f, default=str, indent=2, ensure_ascii=False)
+            return True
+        except OSError:
+            return False
+
+### ./logic/firmware_uploader.py ###
+from __future__ import annotations
+
+import logging
+import subprocess
+from collections.abc import Callable  # ← importar Callable correctamente
+
+logger = logging.getLogger(__name__)
+
+
+class FirmwareUploader:
+
+    @staticmethod  # ← static: no usa self
+    def upload(port: str, hex_path: str,
+               mcu: str = "atmega328p",
+               programmer: str = "arduino",
+               baud: int = 115200,
+               progress_callback: Callable[[str], None] | None = None  # ← tipo correcto
+               ) -> tuple[bool, str]:
+
+        cmd = [
+            "avrdude",
+            "-p", mcu,
+            "-c", programmer,
+            "-P", port,
+            "-b", str(baud),
+            "-U", f"flash:w:{hex_path}:i"
+        ]
+        logger.info(f"Ejecutando avrdude: {' '.join(cmd)}")
+        try:
+            with subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    bufsize=1
+            ) as proc:
+                if proc.stdout:  # ← guard para IO[str] | None
+                    for line in proc.stdout:
+                        if progress_callback:
+                            progress_callback(line.strip())
+                proc.wait()
+                success = proc.returncode == 0
+                if success:
+                    msg = "Firmware cargado correctamente."
+                else:
+                    msg = f"Error de avrdude (código {proc.returncode})."
+                return success, msg
+        except FileNotFoundError:
+            return False, "No se encontró 'avrdude'. Asegúrate de que esté instalado y en el PATH."
+        except Exception as e:
+            return False, f"Error inesperado: {e}"
+
+### ./logic/__init__.py ###
+
+### ./logic/serial_bridge.py ###
+"""
+logic/serial_bridge.py
+"""
+from __future__ import annotations
+
+import json
+import logging
+import threading
+import time
+from collections.abc import Callable
+from typing import Optional
+
+import serial  # type: ignore[import-untyped]  # ← pyserial no tiene stubs
+
+logger = logging.getLogger(__name__)
+
+
+class SerialBridge:
+
+    def __init__(self, port: str, baud: int = 9600,
+                 on_message: Optional[Callable[[dict], None]] = None,  # ← callable → Callable
+                 timeout: float = 1.0):
+        self.port = port
+        self.baud = baud
+        self._on_message = on_message
+        self._serial: Optional[serial.Serial] = None
+        self._reader_thread: Optional[threading.Thread] = None
+        self._running = False
+        self.timeout = timeout
+
+    def connect(self) -> bool:
+        try:
+            self._serial = serial.Serial(self.port, self.baud, timeout=self.timeout)
+            self._running = True
+            self._reader_thread = threading.Thread(target=self._read_loop, daemon=True)
+            assert self._reader_thread is not None  # ← satisface el linter
+            self._reader_thread.start()
+            logger.info(f"Conectado a {self.port}")
+            self._handshake_version()
+            return True
+        except serial.SerialException as e:
+            logger.error(f"No se pudo conectar a {self.port}: {e}")
+            return False
+
+    def disconnect(self) -> None:
+        self._running = False
+        if self._reader_thread:
+            self._reader_thread.join(timeout=2)
+        if self._serial and self._serial.is_open:
+            self._serial.close()
+            logger.info(f"Desconectado de {self.port}")
+
+    def is_connected(self) -> bool:
+        return self._serial is not None and self._serial.is_open
+
+    def send_command(self, cmd: dict) -> None:
+        if not self.is_connected():
+            logger.warning("Intento de envío sin conexión")
+            return
+        if self._serial is None:  # ← guard para linter
+            return
+        try:
+            line = json.dumps(cmd) + "\n"
+            self._serial.write(line.encode("utf-8"))  # ← ahora _serial no es None
+            self._serial.flush()
+        except serial.SerialException as e:
+            logger.error(f"Error al enviar comando por {self.port}: {e}")
+
+    def _read_loop(self) -> None:
+        buffer = ""
+        while self._running and self._serial and self._serial.is_open:
+            try:
+                if self._serial.in_waiting > 0:
+                    chunk = self._serial.read(self._serial.in_waiting).decode("utf-8", errors="replace")
+                    buffer += chunk
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
+                        line = line.strip()
+                        if line:
+                            self._process_line(line)
+                else:
+                    time.sleep(0.01)
+            except serial.SerialException:
+                logger.error("Error de lectura serial, cerrando puerto")
+                self._running = False
+                break
+            except Exception as e:  # ← este sí es correcto: errores inesperados
+                logger.error(f"Error inesperado en lector serial: {e}")
+
+    def _process_line(self, line: str) -> None:
+        try:
+            data = json.loads(line)
+            if self._on_message:
+                self._on_message(data)
+        except json.JSONDecodeError:
+            logger.warning(f"Línea no JSON recibida en {self.port}: {line}")
+
+    def _handshake_version(self) -> None:
+        self.send_command({"cmd": "version"})
+
+### ./main.py ###
+import logging
+import signal
+import sys
+import tkinter as tk
+from pathlib import Path
+from tkinter import messagebox
+
+import customtkinter as ctk
+
+# --------------------------------------------------------------------------
+# Bootstrap — primera ejecución o verificación de entorno
+# --------------------------------------------------------------------------
+from bootstrap import bootstrap
+from connection.mqtt_client import MQTTEventBus
+from data.database import Database
+from domain.components import Finca, Parcela
+from domain.memento import ConfigManager
+from logic.data_receiver import DataReceiver
+from ui.main_window import MainWindow
+from ui.theme import apply_theme  # ← necesario para aplicar el tema
+
+_ok, _msg = bootstrap()
+if not _ok:
+    # Mostrar error gráfico y salir — funciona incluso antes de crear root
+    _root = tk.Tk()
+    _root.withdraw()
+    messagebox.showerror("FoT — Error de configuración", _msg)  # ← usando tk.messagebox
+    _root.destroy()
+    sys.exit(1)
+
+# --------------------------------------------------------------------------
+# Logging
+# --------------------------------------------------------------------------
+_LOG_PATH = Path(__file__).parent / "fot.log"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s — %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler(_LOG_PATH, encoding="utf-8"),
+    ],
+)
+logger = logging.getLogger(__name__)
+
+# --------------------------------------------------------------------------
+# Configuración
+# --------------------------------------------------------------------------
+BROKER_IP = "localhost"
+BROKER_PORT = 1883
+DB_PATH = str(Path(__file__).parent / "data" / "fot.db")
+
+
+def build_finca_from_db(db: Database) -> Finca:
+    finca = Finca("finca-1", "Finca Principal")
+    for row in db.get_parcelas():
+        parcela = Parcela(
+            id=row["id"],
+            name=row["name"],
+            umbral_min=row["umbral_min"],
+            umbral_max=row["umbral_max"],
+            modo=row["modo"],
+        )
+        finca.add_parcela(parcela)
+    return finca
+
+
+def main() -> None:
+    logger.info("Arrancando FoT Estación Base")
+
+    db = Database(DB_PATH)
+    db.initialize()
+    db.purge_old_readings(days=30)
+    logger.info("Base de datos lista en %s", DB_PATH)
+
+    finca = build_finca_from_db(db)
+    logger.info("Finca cargada: %d parcelas", len(finca.get_children()))
+
+    mqtt_bus = MQTTEventBus(BROKER_IP, BROKER_PORT)
+
+    config_manager = ConfigManager()
+    data_receiver = DataReceiver(db, finca)
+    mqtt_bus.register(data_receiver)
+
+    try:
+        mqtt_bus.start()
+        logger.info("MQTT conectado a %s:%s", BROKER_IP, BROKER_PORT)
+    except Exception as e:
+        logger.error("No se pudo conectar al broker MQTT: %s", e)
+
+    # ----- CAMBIOS AQUÍ -----
+    apply_theme()  # aplicar tema antes de crear la ventana
+    root = ctk.CTk()  # ventana principal con CustomTkinter
+    # -------------------------
+
+    window = MainWindow(root, finca, mqtt_bus, db, config_manager)
+    mqtt_bus.register(window)
+
+    def on_close() -> None:
+        logger.info("Cerrando FoT Estación Base")
+        mqtt_bus.unregister(window)
+        mqtt_bus.unregister(data_receiver)
+        mqtt_bus.stop()
+        db.close()
+        root.destroy()
+
+    root.protocol("WM_DELETE_WINDOW", on_close)
+
+    def _handle_sigterm(_signum: int, _frame: object) -> None:
+        root.after(0, on_close)  # type: ignore[arg-type]
+
+    signal.signal(signal.SIGTERM, _handle_sigterm)  # type: ignore[arg-type]
+
+    logger.info("UI lista, entrando en mainloop")
+    root.mainloop()
+    logger.info("FoT Estación Base cerrada")
+
+
+if __name__ == "__main__":
+    main()
+
+### ./ui/dialogs/add_parcela_dialog.py ###
+
+### ./ui/dialogs/assign_arduino_dialog.py ###
+"""
+ui/dialogs/assign_arduino_dialog.py
+Diálogo para vincular una placa Arduino a una parcela.
+"""
+import tkinter as tk
+
+import customtkinter as ctk
+
+from ui.theme import FONT_NORMAL, FONT_SMALL
+
+
+class AssignArduinoDialog(ctk.CTkToplevel):
+    def __init__(self, parent, board_id: str, parcelas: list[dict], on_confirm=None):
+        super().__init__(parent)
+        self.title(f"Asignar placa {board_id}")
+        self.resizable(False, False)
+        # SIN grab_set() aquí
+
+        self._board_id = board_id
+        self._parcelas = parcelas
+        self._on_confirm = on_confirm
+
+        self._build()
+        self.update()
+        self.after(10, self._set_grab)  # type: ignore[arg-type]
+
+    def _set_grab(self):
+        try:
+            self.grab_set()
+        except tk.TclError:
+            pass
+
+    def _build(self):
+        # Selector de parcela
+        ctk.CTkLabel(self, text="Seleccionar parcela:", font=FONT_NORMAL).grid(
+            row=0, column=0, padx=14, pady=(14, 4), sticky="w")
+
+        parcelas_ids = [f"{p['id']} - {p['name']}" for p in self._parcelas]
+        self._combo = ctk.CTkComboBox(
+            self, values=parcelas_ids,
+            font=FONT_NORMAL,
+            width=250
+        )
+        self._combo.grid(row=1, column=0, padx=14, pady=4)
+        if parcelas_ids:
+            self._combo.set(parcelas_ids[0])
+
+        # Botón confirmar
+        ctk.CTkButton(
+            self, text="Asignar",
+            font=FONT_SMALL,
+            command=self._confirm
+        ).grid(row=2, column=0, pady=12)
+
+    def _confirm(self):
+        seleccion = self._combo.get()
+        if not seleccion:
+            return
+        parcela_id = seleccion.split(" - ")[0]
+
+        # Verificar si la parcela ya tiene asignación (eso lo hará el callback,
+        # aquí solo enviamos la solicitud)
+        if self._on_confirm:
+            self._on_confirm(self._board_id, parcela_id)
+        self.destroy()
+
+### ./ui/dialogs/export_dialog.py ###
+from __future__ import annotations
+
+from datetime import datetime
+from tkinter import filedialog
+
+import customtkinter as ctk
+
+from logic.exporter import DataExporter
+from ui.error_handler import ErrorCode
+from ui.theme import FONT_NORMAL, FONT_SMALL
+
+
+class ExportDialog(ctk.CTkToplevel):
+    def __init__(self, parent, parcelas: list[dict],
+                 db,
+                 error_handler=None):
+        super().__init__(parent)
+        self.title("Exportar datos")
+        self.resizable(False, False)
+        # SIN grab_set() aquí — se llama diferido tras el renderizado
+
+        self._parcelas = parcelas
+        self._exporter = DataExporter(db)
+        self._error_handler = error_handler
+
+        self._build()
+
+        # Esperar a que la ventana sea visible antes de capturar el foco
+        self.update()
+        self.after(10, self.grab_set)  # type: ignore[arg-type]
+
+    def _build(self):
+        ctk.CTkLabel(self, text="Parcela:", font=FONT_NORMAL).grid(
+            row=0, column=0, padx=14, pady=(14, 4), sticky="w")
+        parcelas_ids = [f"{p['id']} - {p['name']}" for p in self._parcelas]
+        self._combo_parcela = ctk.CTkComboBox(
+            self, values=parcelas_ids, font=FONT_NORMAL, width=250)
+        self._combo_parcela.grid(row=1, column=0, padx=14, pady=4, columnspan=2)
+        if parcelas_ids:
+            self._combo_parcela.set(parcelas_ids[0])
+
+        ctk.CTkLabel(self, text="Tipo de datos:", font=FONT_NORMAL).grid(
+            row=2, column=0, padx=14, pady=(12, 4), sticky="w")
+        self._combo_tipo = ctk.CTkComboBox(
+            self,
+            values=["Lecturas de sensores", "Historial de eventos", "Configuración actual"],
+            font=FONT_NORMAL, width=250)
+        self._combo_tipo.grid(row=3, column=0, padx=14, pady=4, columnspan=2)
+        self._combo_tipo.set("Lecturas de sensores")
+
+        self._lbl_start = ctk.CTkLabel(self, text="Fecha inicio (YYYY-MM-DD):", font=FONT_SMALL)
+        self._lbl_start.grid(row=4, column=0, padx=14, pady=(12, 0), sticky="w")
+        self._entry_start = ctk.CTkEntry(self, width=120, font=FONT_NORMAL)
+        self._entry_start.grid(row=5, column=0, padx=14, pady=4, sticky="w")
+
+        self._lbl_end = ctk.CTkLabel(self, text="Fecha fin (YYYY-MM-DD):", font=FONT_SMALL)
+        self._lbl_end.grid(row=4, column=1, padx=14, pady=(12, 0), sticky="w")
+        self._entry_end = ctk.CTkEntry(self, width=120, font=FONT_NORMAL)
+        self._entry_end.grid(row=5, column=1, padx=14, pady=4, sticky="w")
+
+        self._combo_tipo.configure(command=self._toggle_dates)
+
+        ctk.CTkLabel(self, text="Formato:", font=FONT_NORMAL).grid(
+            row=6, column=0, padx=14, pady=(12, 4), sticky="w")
+        self._combo_fmt = ctk.CTkComboBox(
+            self, values=["CSV", "JSON"], font=FONT_NORMAL, width=100)
+        self._combo_fmt.grid(row=7, column=0, padx=14, pady=4, sticky="w")
+        self._combo_fmt.set("CSV")
+
+        ctk.CTkButton(
+            self, text="Exportar",
+            font=FONT_SMALL,
+            command=self._export,
+        ).grid(row=8, column=0, columnspan=2, pady=14)
+
+    def _toggle_dates(self, _value: str = "") -> None:  # ← parámetro explícito con _
+        if self._combo_tipo.get() == "Configuración actual":
+            self._lbl_start.grid_remove()
+            self._entry_start.grid_remove()
+            self._lbl_end.grid_remove()
+            self._entry_end.grid_remove()
+        else:
+            self._lbl_start.grid()
+            self._entry_start.grid()
+            self._lbl_end.grid()
+            self._entry_end.grid()
+
+    def _export(self):
+        sel = self._combo_parcela.get()
+        if not sel:
+            return
+        parcela_id = sel.split(" - ")[0]
+
+        tipo = self._combo_tipo.get()
+        fmt = self._combo_fmt.get().lower()
+        ext = ".json" if fmt == "json" else ".csv"
+
+        path = filedialog.asksaveasfilename(
+            defaultextension=ext,
+            filetypes=[("JSON", "*.json")] if fmt == "json" else [("CSV", "*.csv")],
+            title=f"Guardar {tipo.lower()} como",
+        )
+        if not path:
+            return
+
+        start = end = None
+        if tipo != "Configuración actual":
+            try:
+                s = self._entry_start.get().strip()
+                e = self._entry_end.get().strip()
+                if s:
+                    start = datetime.strptime(s, "%Y-%m-%d")
+                if e:
+                    end = datetime.strptime(e, "%Y-%m-%d")
+            except ValueError:
+                if self._error_handler:
+                    self._error_handler.show(ErrorCode.ERR_THRESHOLDS, self)
+                return
+
+        if tipo == "Lecturas de sensores":
+            ok = self._exporter.export_readings(parcela_id, start, end, fmt, path)
+        elif tipo == "Historial de eventos":
+            ok = self._exporter.export_events(parcela_id, start, end, fmt, path)
+        else:
+            ok = self._exporter.export_config(parcela_id, fmt, path)
+
+        if ok:
+            self.destroy()
+        elif self._error_handler:
+            self._error_handler.show(ErrorCode.ERR_DB_WRITE, self)
+
+### ./ui/dialogs/firmware_dialog.py ###
+"""
+ui/dialogs/firmware_dialog.py
+"""
+import threading
+import tkinter as tk
+from pathlib import Path  # ← reemplaza os.path
+from tkinter import filedialog
+from typing import Optional
+
+import customtkinter as ctk
+
+from logic.firmware_uploader import FirmwareUploader
+from ui.theme import FONT_NORMAL, FONT_SMALL, FONT_MONO
+
+
+class FirmwareDialog(ctk.CTkToplevel):
+    def __init__(self, parent, board_id: str, port: str,
+                 current_version: str = "Desconocida"):
+        super().__init__(parent)
+        self.title(f"Actualizar firmware - {board_id}")
+        self.resizable(False, False)
+
+        self._board_id = board_id
+        self._port = port
+        self._current_version = current_version
+        self._hex_path: Optional[str] = None
+        self._uploader = FirmwareUploader()
+
+        self._build()
+        self.update()
+        self.after(10, lambda: self._set_grab())  # type: ignore[arg-type]
+
+    def _set_grab(self) -> None:
+        try:
+            self.grab_set()
+        except tk.TclError:
+            pass
+
+    def _build(self) -> None:
+        ctk.CTkLabel(self, text=f"Placa: {self._board_id}", font=FONT_NORMAL).grid(
+            row=0, column=0, padx=14, pady=(14, 4), sticky="w")
+        ctk.CTkLabel(self, text=f"Versión actual: {self._current_version}", font=FONT_NORMAL).grid(
+            row=1, column=0, padx=14, pady=4, sticky="w")
+
+        file_frame = ctk.CTkFrame(self, fg_color="transparent")
+        file_frame.grid(row=2, column=0, padx=14, pady=8, sticky="ew")
+        self._lbl_file = ctk.CTkLabel(file_frame, text="Ningún archivo seleccionado", font=FONT_SMALL)
+        self._lbl_file.pack(side="left", padx=4)
+        ctk.CTkButton(
+            file_frame, text="Seleccionar .hex",
+            font=FONT_SMALL, command=self._select_file
+        ).pack(side="right", padx=4)
+
+        self._progress = ctk.CTkProgressBar(self, width=300)
+        self._progress.grid(row=3, column=0, padx=14, pady=4, sticky="ew")
+        self._progress.set(0)
+
+        self._log = ctk.CTkTextbox(self, height=150, font=FONT_MONO, state="disabled")
+        self._log.grid(row=4, column=0, padx=14, pady=8, sticky="ew")
+
+        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        btn_frame.grid(row=5, column=0, pady=8)
+        self._btn_start = ctk.CTkButton(
+            btn_frame, text="Iniciar carga",
+            font=FONT_SMALL, command=self._start_flash, state="disabled"
+        )
+        self._btn_start.pack(side="left", padx=4)
+        ctk.CTkButton(
+            btn_frame, text="Cerrar",
+            font=FONT_SMALL, fg_color="gray", command=self.destroy
+        ).pack(side="left", padx=4)
+
+        self._lbl_status = ctk.CTkLabel(self, text="Listo", font=FONT_SMALL,
+                                        text_color="green")
+        self._lbl_status.grid(row=6, column=0, padx=14, pady=(0, 8), sticky="w")
+
+    def _select_file(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Seleccionar firmware .hex",
+            filetypes=[("Intel HEX", "*.hex")]
+        )
+        if path:
+            self._hex_path = path
+            self._lbl_file.configure(text=Path(path).name)  # ← Path.name reemplaza os.path.basename
+            self._btn_start.configure(state="normal")
+
+    def _start_flash(self) -> None:
+        if not self._hex_path:
+            return
+        self._btn_start.configure(state="disabled")
+        self._lbl_status.configure(text="Cargando...", text_color="orange")
+        self._log_clear()
+        self._log_add("Iniciando avrdude...\n")
+        threading.Thread(target=self._run_upload, daemon=True).start()
+
+    def _run_upload(self) -> None:
+        success, message = self._uploader.upload(
+            port=self._port,
+            hex_path=self._hex_path or "",
+            progress_callback=self._on_progress_line
+        )
+        self.after(0, self._set_status, "Éxito" if success else "Error",
+                   "green" if success else "red")  # ← after() con args posicionales
+        self.after(0, self._log_add, message + "\n")
+
+    def _on_progress_line(self, line: str) -> None:
+        self.after(0, self._log_add, line + "\n")
+        low = line.lower()
+        if "writing flash" in low:
+            self.after(0, self._update_progress, 0.5)
+        elif "reading on-chip flash" in low:
+            self.after(0, self._update_progress, 0.8)
+        elif "avrdude done" in low:
+            self.after(0, self._update_progress, 1.0)
+
+    def _log_add(self, text: str) -> None:
+        self._log.configure(state="normal")
+        self._log.insert("end", text)
+        self._log.see("end")
+        self._log.configure(state="disabled")
+
+    def _log_clear(self) -> None:
+        self._log.configure(state="normal")
+        self._log.delete("1.0", "end")
+        self._log.configure(state="disabled")
+
+    def _update_progress(self, value: float) -> None:
+        self._progress.set(value)
+
+    def _set_status(self, text: str, color: str) -> None:
+        self._lbl_status.configure(text=text, text_color=color)
+        self._btn_start.configure(state="normal")
+
+### ./ui/dialogs/__init__.py ###
+
+### ./ui/error_handler.py ###
+"""
+ui/error_handler.py
+Sistema centralizado de errores con mensajes en español.
+Reemplaza los messagebox.showerror dispersos por llamadas a ErrorHandler.show().
+
+Uso:
+    from ui.error_handler import ErrorCode, ErrorHandler
+
+    error_handler = ErrorHandler()
+    error_handler.show(ErrorCode.ERR_MODE_CHANGE, parent, parcela_id=parcela_id)
+"""
+from __future__ import annotations
+
+import tkinter as tk
+from enum import Enum
+from tkinter import messagebox  # solo como fallback si no hay parent CTk
+
+import customtkinter as ctk
+
+from ui.theme import FONT_NORMAL, FONT_SMALL
+
+
+# ---------------------------------------------------------------------------
+# Códigos de error
+# ---------------------------------------------------------------------------
+class ErrorCode(Enum):
+    ERR_MODE_CHANGE = "ERR_MODE_CHANGE"
+    ERR_IRRIGATE = "ERR_IRRIGATE"
+    ERR_THRESHOLDS = "ERR_THRESHOLDS"
+    ERR_ADD_PARCELA = "ERR_ADD_PARCELA"
+    ERR_DUPLICATE_PARCELA = "ERR_DUPLICATE_PARCELA"
+    ERR_MODIFY_PARCELA = "ERR_MODIFY_PARCELA"
+    ERR_DELETE_PARCELA = "ERR_DELETE_PARCELA"
+    ERR_SNAPSHOT = "ERR_SNAPSHOT"
+    ERR_SENSOR_READ = "ERR_SENSOR_READ"
+    ERR_MQTT_CONN = "ERR_MQTT_CONN"
+    ERR_USB_CONN = "ERR_USB_CONN"
+    ERR_FIRMWARE_INCOMPAT = "ERR_FIRMWARE_INCOMPAT"
+    ERR_FIRMWARE_UPLOAD = "ERR_FIRMWARE_UPLOAD"
+    ERR_VAR_READ = "ERR_VAR_READ"
+    ERR_DB_WRITE = "ERR_DB_WRITE"
+    ERR_ID_GENERATION = "ERR_ID_GENERATION"
+
+
+# ---------------------------------------------------------------------------
+# Mensajes en español (pueden contener placeholders para .format())
+# ---------------------------------------------------------------------------
+MESSAGES: dict[ErrorCode, str] = {
+    ErrorCode.ERR_MODE_CHANGE: (
+        "No se pudo cambiar el modo de operación. "
+        "Verifica la conexión con la parcela."
+    ),
+    ErrorCode.ERR_IRRIGATE: (
+        "No se pudo activar el riego. "
+        "La parcela puede estar desconectada o en estado de fallo."
+    ),
+    ErrorCode.ERR_THRESHOLDS: (
+        "No se pudieron guardar los umbrales. "
+        "Verifica que los valores sean números válidos (0–100)."
+    ),
+    ErrorCode.ERR_ADD_PARCELA: (
+        "No se pudo crear la parcela. "
+        "El nombre no puede estar vacío."
+    ),
+    ErrorCode.ERR_DUPLICATE_PARCELA: (
+        "Ya existe una parcela con ese ID o nombre. "
+        "Usa un identificador diferente."
+    ),
+    ErrorCode.ERR_MODIFY_PARCELA: (
+        "No se pudo modificar la parcela. "
+        "Es posible que haya un problema con la base de datos."
+    ),
+    ErrorCode.ERR_DELETE_PARCELA: (
+        "No se pudo eliminar la parcela. "
+        "Desasigna la placa antes de eliminarla."
+    ),
+    ErrorCode.ERR_SNAPSHOT: (
+        "No se pudo guardar la instantánea de configuración."
+    ),
+    ErrorCode.ERR_SENSOR_READ: (
+        "Error al leer el sensor {sensor} en la placa {placa}. "
+        "Verifica el cableado."
+    ),
+    ErrorCode.ERR_MQTT_CONN: (
+        "Sin conexión con el broker MQTT en {ip}:{puerto}. "
+        "Verifica que Mosquitto esté activo."
+    ),
+    ErrorCode.ERR_USB_CONN: (
+        "No se pudo conectar con la placa en {puerto}. "
+        "Verifica el cable y los permisos del puerto."
+    ),
+    ErrorCode.ERR_FIRMWARE_INCOMPAT: (
+        "El firmware seleccionado no es compatible con esta placa o está corrupto."
+    ),
+    ErrorCode.ERR_FIRMWARE_UPLOAD: (
+        "Error al cargar el firmware: {detalle}. "
+        "Revisa que la placa esté en modo de carga."
+    ),
+    ErrorCode.ERR_VAR_READ: (
+        "No se pudo obtener el valor de {variable} en {parcela}."
+    ),
+    ErrorCode.ERR_DB_WRITE: (
+        "Los cambios no se guardaron correctamente en la base de datos."
+    ),
+    ErrorCode.ERR_ID_GENERATION: (
+        "No se pudo generar un ID único para la parcela. "
+        "Intenta de nuevo."
+    ),
+}
+
+
+# ---------------------------------------------------------------------------
+# Diálogo de error basado en CTkToplevel
+# ---------------------------------------------------------------------------
+class ErrorDialog(ctk.CTkToplevel):
+    """
+    Ventana emergente modal que muestra un mensaje de error.
+    Similar a messagebox.showerror pero con el tema de CustomTkinter.
+    """
+
+    def __init__(self, parent, message: str) -> None:
+        super().__init__(parent)
+        self.title("Error")
+        self.resizable(False, False)
+        # SIN grab_set() aquí — se difiere hasta que la ventana sea visible
+        # (evita _tkinter.TclError: grab failed: window not viewable)
+
+        # Configuración mínima de grid
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        # Marco principal
+        frame = ctk.CTkFrame(self, corner_radius=8)
+        frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
+        frame.grid_columnconfigure(0, weight=1)
+
+        # Icono (texto "⚠" como sustituto rápido)
+        ctk.CTkLabel(frame, text="⚠", font=("Roboto", 32),
+                     text_color="#F59E0B").grid(row=0, column=0, pady=(10, 5))
+
+        # Mensaje
+        ctk.CTkLabel(frame, text=message, font=FONT_NORMAL,
+                     wraplength=400, justify="left").grid(
+            row=1, column=0, padx=20, pady=(0, 10))
+
+        # Botón Cerrar
+        ctk.CTkButton(frame, text="Cerrar", font=FONT_SMALL,
+                      command=self.destroy).grid(row=2, column=0, pady=(5, 10))
+
+        # Ajustar tamaño automáticamente
+        self.update_idletasks()
+        self.minsize(300, 150)
+
+        # Esperar a que la ventana sea visible antes de capturar el foco
+        self.update()
+        self.after(10, self._set_grab)  # type: ignore[arg-type]
+        self.wait_window()
+
+    def _set_grab(self) -> None:
+        try:
+            self.grab_set()
+        except tk.TclError:
+            # La ventana puede haberse cerrado antes de que el after() dispare
+            pass
+
+
+# ---------------------------------------------------------------------------
+# Manejador de errores
+# ---------------------------------------------------------------------------
+class ErrorHandler:
+
+    @staticmethod
+    def show(code: ErrorCode, parent=None, **kwargs) -> None:
+        raw_message = MESSAGES.get(code, "Error desconocido.")
+        try:
+            message = raw_message.format(**kwargs)
+        except KeyError:
+            message = raw_message
+
+        if parent and isinstance(parent, ctk.CTk):
+            ErrorDialog(parent, message)
+        elif parent and hasattr(parent, "winfo_toplevel"):
+            root = parent.winfo_toplevel()
+            if isinstance(root, ctk.CTk):
+                ErrorDialog(root, message)
+            else:
+                messagebox.showerror("Error", message)
+        else:
+            messagebox.showerror("Error", message)
+### ./ui/__init__.py ###
+
+### ./ui/main_window.py ###
+import logging
+import tkinter as tk
+from tkinter.messagebox import askyesno
+
+import customtkinter as ctk
+
+from connection.mqtt_client import MQTTEventBus
+from data.database import Database
+from domain.boards import Board
+from domain.components import Finca, Parcela
+from domain.memento import ConfigManager
+from logic.db_verifier import verify_parcela_saved  # <-- NUEVO
+from logic.device_scanner import USBScanner
+from logic.serial_bridge import SerialBridge
+from ui.dialogs.export_dialog import ExportDialog
+from ui.error_handler import ErrorCode, ErrorHandler
+from ui.panels.arduino_panel import ArduinoPanel
+from ui.panels.help_panel import HelpPanel
+from ui.panels.main_panel import MainPanel
+from ui.theme import FONT_NORMAL
+from ui.widgets.side_bar import SideBar
+from ui.widgets.status_bar import StatusBar
+from ui.widgets.top_bar import TopBar
+
+logger = logging.getLogger(__name__)
+
+
+class MainWindow:
+    """
+    Vista principal — Observer concreto.
+    Recibe eventos MQTT y actualiza la UI de forma segura vía root.after().
+    """
+
+    def __init__(self,
+                 root: ctk.CTk,
+                 finca: Finca,
+                 mqtt_bus: MQTTEventBus,
+                 db: Database,
+                 config_manager: ConfigManager):
+        self._root = root
+        self._finca = finca
+        self._mqtt_bus = mqtt_bus
+        self._db = db
+        self._config_manager = config_manager
+
+        self._selected_parcela_id: str | None = None
+        self._error_handler = ErrorHandler()
+
+        self._current_panel: ctk.CTkFrame | None = None
+        self._root.title("FoT — Estación Base")
+        self._root.minsize(960, 640)
+        self._root.grid_rowconfigure(1, weight=1)
+        self._root.grid_columnconfigure(1, weight=1)
+
+        # Construir layout
+        self._build_layout()
+
+        # Cargar datos iniciales
+        self._refresh_parcela_list()
+        self._load_event_log()
+
+        # Boards y escáner USB
+        self._boards: list[Board] = []
+        self._usb_scanner = USBScanner(
+            on_new_board=self._on_usb_new_board,
+            on_remove_board=self._on_usb_remove_board,
+            interval=3
+        )
+        self._usb_scanner.start()
+        self._serial_bridges: dict[str, SerialBridge] = {}
+
+        # Reloj de la barra de estado
+        self._status_bar.start_clock(root)
+
+    # ------------------------------------------------------------------
+    # Layout general
+    # ------------------------------------------------------------------
+    def _build_layout(self) -> None:
+        # Top bar
+        self._top_bar = TopBar(self._root, on_bell_click=None)
+        self._top_bar.grid(row=0, column=0, columnspan=2, sticky="ew")
+
+        # Side bar
+        self._side_bar = SideBar(self._root, on_navigate=self._navigate)
+        self._side_bar.grid(row=1, column=0, sticky="ns", rowspan=2)
+
+        # Status bar (abajo)
+        self._status_bar = StatusBar(self._root)
+        self._status_bar.grid(row=2, column=1, sticky="ew")
+
+        # Contenedor de paneles
+        self._content_area = ctk.CTkFrame(self._root)
+        self._content_area.grid(row=1, column=1, sticky="nsew")
+        self._content_area.grid_rowconfigure(0, weight=1)
+        self._content_area.grid_columnconfigure(0, weight=1)
+
+        # Crear paneles y guardarlos en un diccionario
+        self._panels: dict[str, ctk.CTkFrame] = {}
+
+        # Panel principal (parcelas)
+        self.main_panel = MainPanel(
+            self._content_area,
+            on_add_parcela=self._add_parcela,
+            on_delete_parcela=self._delete_parcela,
+            on_select_parcela=self._on_select_parcela,
+            on_apply_thresholds=self._apply_thresholds_cb,
+            on_mode_change=self._on_mode_change_cb,
+            on_irrigate=self._cmd_irrigate,
+            on_stop=self._cmd_stop,
+        )
+        self._panels["parcelas"] = self.main_panel
+
+        # Arduino panel
+        self.arduino_panel = ArduinoPanel(
+            self._content_area,
+            on_assign=self._on_assign_board,
+            on_unassign=self._on_unassign_board,
+            on_firmware_update=self._on_firmware_update,
+            on_scan_bluetooth=None,
+        )
+        self._panels["arduinos"] = self.arduino_panel
+
+        # Help panel
+        self.help_panel = HelpPanel(self._content_area)
+        self._panels["ayuda"] = self.help_panel
+
+        # Inicializar con el panel de parcelas activo
+        self._current_panel = None
+        self._navigate("parcelas")
+        self._side_bar.set_active("parcelas")
+
+    def _navigate(self, section: str) -> None:
+        """Cambia el panel visible en el área de contenido."""
+        if section == "exportar":
+            self._on_export()
+            return
+
+        panel = self._panels.get(section)
+        if panel is None:
+            return
+
+        if self._current_panel is not None:
+            self._current_panel.grid_remove()
+        panel.grid(row=0, column=0, sticky="nsew")
+        self._current_panel = panel
+        self._side_bar.set_active(section)
+
+    # ------------------------------------------------------------------
+    # Lista de parcelas (delega en el panel)
+    # ------------------------------------------------------------------
+    def _refresh_parcela_list(self) -> None:
+        self.main_panel.set_parcelas(self._finca.get_children())
+
+    # ------------------------------------------------------------------
+    # Callbacks de la UI
+    # ------------------------------------------------------------------
+    def _on_select_parcela(self, parcela_id: str) -> None:
+        self._selected_parcela_id = parcela_id
+        parcela = self._finca.get_parcela(parcela_id)
+        if parcela:
+            self.main_panel.update_detail(parcela)
+
+    def _apply_thresholds_cb(self, min_str: str, max_str: str) -> None:
+        if not self._selected_parcela_id:
+            return
+        parcela = self._finca.get_parcela(self._selected_parcela_id)
+        if not parcela:
+            return
+        try:
+            min_val = float(min_str)
+            max_val = float(max_str)
+        except ValueError:
+            self._error_handler.show(ErrorCode.ERR_THRESHOLDS, self._root)
+            return
+        if not (0 <= min_val < max_val <= 100):
+            self._error_handler.show(ErrorCode.ERR_THRESHOLDS, self._root)
+            return
+
+        self._config_manager.save_snapshot(
+            self._finca,
+            f"Antes de cambiar umbrales en {self._selected_parcela_id}",
+            self._db)
+
+        parcela.umbral_min = min_val
+        parcela.umbral_max = max_val
+
+        # Guardar en BD
+        data = {
+            "id": parcela.get_id(),
+            "name": parcela.get_name(),
+            "umbral_min": min_val,
+            "umbral_max": max_val,
+            "modo": parcela.modo,
+        }
+        self._db.save_parcela(data)
+
+        # Verificar guardado
+        expected = {"umbral_min": min_val, "umbral_max": max_val}
+        saved_ok = verify_parcela_saved(self._db, self._selected_parcela_id, expected)
+        if not saved_ok:
+            logger.warning("Verificación de umbrales fallida, reintentando...")
+            self._db.save_parcela(data)
+            saved_ok = verify_parcela_saved(self._db, self._selected_parcela_id, expected)
+            if not saved_ok:
+                self._error_handler.show(ErrorCode.ERR_DB_WRITE, self._root)
+                return
+
+        self._mqtt_bus.publish(
+            f"fot/{self._selected_parcela_id}/control",
+            {"cmd": "set_thresholds", "min": min_val, "max": max_val})
+
+        self._append_log(
+            f"Umbrales actualizados en {self._selected_parcela_id}: "
+            f"mín={min_val}% máx={max_val}%")
+
+        self.main_panel.update_detail(parcela)
+
+    def _on_mode_change_cb(self, value: str) -> None:
+        if not self._selected_parcela_id:
+            return
+        modo = "auto" if value == "automático" else "manual"
+        cmd = "set_mode_auto" if modo == "auto" else "set_mode_manual"
+        self._mqtt_bus.publish(
+            f"fot/{self._selected_parcela_id}/control",
+            {"cmd": cmd})
+        self._append_log(
+            f"Modo cambiado a '{modo}' en {self._selected_parcela_id}")
+
+    def _cmd_irrigate(self) -> None:
+        if self._selected_parcela_id:
+            self._mqtt_bus.publish(
+                f"fot/{self._selected_parcela_id}/control",
+                {"cmd": "irrigate"})
+            self._append_log(
+                f"Riego activado en {self._selected_parcela_id}")
+
+    def _cmd_stop(self) -> None:
+        if self._selected_parcela_id:
+            self._mqtt_bus.publish(
+                f"fot/{self._selected_parcela_id}/control",
+                {"cmd": "stop"})
+            self._append_log(
+                f"Riego detenido en {self._selected_parcela_id}")
+
+    def _add_parcela(self) -> None:
+        dialog = _InputDialog(self._root, "Nueva parcela",
+                              ["ID:", "Nombre:"])
+        if not dialog.result:
+            return
+        pid = dialog.result[0].strip()
+        name = dialog.result[1].strip()
+
+        if not pid or not name:
+            self._error_handler.show(ErrorCode.ERR_ADD_PARCELA, self._root)
+            return
+        if self._finca.get_parcela(pid):
+            self._error_handler.show(ErrorCode.ERR_DUPLICATE_PARCELA, self._root)
+            return
+
+        self._config_manager.save_snapshot(
+            self._finca, f"Antes de añadir parcela {pid}", self._db)
+
+        parcela = Parcela(pid, name)
+        self._finca.add_parcela(parcela)
+
+        # Guardar en BD
+        data = {
+            "id": pid, "name": name,
+            "umbral_min": 30.0, "umbral_max": 70.0, "modo": "manual"
+        }
+        self._db.save_parcela(data)
+
+        # Verificar creación
+        saved_ok = verify_parcela_saved(self._db, pid, {"name": name})
+        if not saved_ok:
+            logger.warning("Verificación de creación de parcela fallida, reintentando...")
+            self._db.save_parcela(data)
+            saved_ok = verify_parcela_saved(self._db, pid, {"name": name})
+            if not saved_ok:
+                self._error_handler.show(ErrorCode.ERR_DB_WRITE, self._root)
+                # Revertir el modelo
+                self._finca.remove_parcela(pid)
+                return
+
+        self._refresh_parcela_list()
+        self._append_log(f"Parcela '{name}' ({pid}) añadida.")
+
+    # ------------------------------------------------------------------
+    # Eliminar parcela
+    # ------------------------------------------------------------------
+    def _delete_parcela(self, parcela_id: str | None = None) -> None:
+        """
+        Elimina una parcela.
+
+        Acepta un parcela_id opcional porque este método es invocado desde
+        dos orígenes distintos en MainPanel:
+          - El menú contextual (⋮ → "Eliminar parcela") pasa el parcela_id
+            de la fila sobre la que se hizo clic.
+          - El botón "Eliminar" de la barra inferior no pasa argumento y
+            depende de self._selected_parcela_id.
+
+        Si no se recibe parcela_id, se usa self._selected_parcela_id.
+        """
+        target_id = parcela_id or self._selected_parcela_id
+
+        if not target_id:
+            self._error_handler.show(ErrorCode.ERR_DELETE_PARCELA, self._root)
+            return
+
+        if self._finca.get_parcela(target_id) is None:
+            self._error_handler.show(ErrorCode.ERR_DELETE_PARCELA, self._root)
+            return
+
+        confirm = askyesno(
+            "Confirmar eliminación",
+            f"¿Eliminar la parcela '{target_id}'?\n"
+            "Esta acción no se puede deshacer.")
+        if not confirm:
+            return
+
+        self._config_manager.save_snapshot(
+            self._finca,
+            f"Antes de eliminar parcela {target_id}",
+            self._db)
+
+        # Eliminar de la BD
+        self._db.delete_parcela(target_id)
+
+        # Verificar que ya no existe
+        parcela_row = self._db.get_parcela(target_id)
+        if parcela_row is not None:
+            logger.warning("Verificación de eliminación fallida, reintentando...")
+            self._db.delete_parcela(target_id)
+            parcela_row = self._db.get_parcela(target_id)
+            if parcela_row is not None:
+                self._error_handler.show(ErrorCode.ERR_DB_WRITE, self._root)
+                return
+
+        # Quitar del modelo
+        self._finca.remove_parcela(target_id)
+        self._append_log(f"Parcela '{target_id}' eliminada.")
+
+        # Si la parcela eliminada era la seleccionada, limpiar selección
+        if self._selected_parcela_id == target_id:
+            self._selected_parcela_id = None
+            self.main_panel.lbl_title.configure(
+                text="— Ninguna parcela seleccionada —")
+
+        self._refresh_parcela_list()
+
+    def _save_snapshot_manual(self) -> None:
+        self._config_manager.save_snapshot(
+            self._finca, "Instantánea manual", self._db)
+        self._append_log("Instantánea de configuración guardada.")
+
+    # ------------------------------------------------------------------
+    # Observer MQTT
+    # ------------------------------------------------------------------
+    def on_event(self, topic: str, data: dict) -> None:
+        self._root.after(0, self._update_ui, topic, data)
+
+    def _update_ui(self, topic: str, data: dict) -> None:
+        try:
+            parcela_id = topic.split("/")[1]
+        except IndexError:
+            return
+
+        parcela = self._finca.get_parcela(parcela_id)
+        if parcela is None:
+            return
+
+        if topic.endswith("/sensores"):
+            if parcela_id == self._selected_parcela_id:
+                self.main_panel.update_detail(parcela)
+
+        elif topic.endswith("/estado"):
+            fsm_state = data.get("state", "Idle")
+            self._refresh_parcela_list()
+            if parcela_id == self._selected_parcela_id:
+                self.main_panel.update_detail(parcela)
+            if fsm_state == "Fault":
+                self._append_log(f"[FALLO] {parcela_id}: {data}", tipo="error")
+
+    # ------------------------------------------------------------------
+    # Log de eventos
+    # ------------------------------------------------------------------
+    def _load_event_log(self) -> None:
+        for parcela in self._finca.get_children():
+            for e in reversed(self._db.get_events(parcela.get_id(), limit=20)):
+                ts = e.get('ts', '')
+                tipo = e.get('tipo', '')
+                desc = e.get('descripcion', '')
+                self._append_log(
+                    f"[{ts}] {tipo} — {desc}",
+                    tipo=self._mapear_tipo(tipo))
+
+    def _append_log(self, text: str, tipo: str = "") -> None:
+        self.main_panel.add_event(text, tipo)
+
+    @staticmethod
+    def _mapear_tipo(tipo_evento: str) -> str:
+        tipo = tipo_evento.lower()
+        if "error" in tipo or "fallo" in tipo:
+            return "error"
+        if "riego" in tipo:
+            return "riego"
+        if "modo" in tipo:
+            return "modo"
+        return ""
+
+    # ------------------------------------------------------------------
+    # Placas y USB
+    # ------------------------------------------------------------------
+    def _on_usb_new_board(self, port):
+        board_id = port.serial_number or port.device
+        if any(b.id == board_id for b in self._boards):
+            return
+
+        board = Board(board_id, conn="usb", status="Conectada", port=port.device)
+        self._boards.append(board)
+        self.arduino_panel.update_board(board)
+        self._start_serial_bridge(port.device)
+
+    def _on_usb_remove_board(self, device):
+        board = next((b for b in self._boards if b.id == device), None)
+        if board:
+            board.status = "Desconectada"
+            self.arduino_panel.update_board(board)
+        self._stop_serial_bridge(device)
+
+    def _start_serial_bridge(self, port: str, baud: int = 9600) -> SerialBridge | None:
+        def on_serial_message(data: dict) -> None:
+            parcela_id = data.get("parcela_id")
+            if parcela_id:
+                topic = f"fot/{parcela_id}/{data.get('type', 'event')}"
+                self.on_event(topic, data)
+            else:
+                logger.info("Dato serial sin parcela asignada: %s", data)
+
+        bridge = SerialBridge(port, baud, on_message=on_serial_message)
+        if bridge.connect():
+            self._serial_bridges[port] = bridge
+            return bridge
+        return None
+
+    def _stop_serial_bridge(self, port: str) -> None:
+        bridge = self._serial_bridges.pop(port, None)
+        if bridge:
+            bridge.disconnect()
+
+    # ------------------------------------------------------------------
+    # Exportar (abre diálogo)
+    # ------------------------------------------------------------------
+    def _on_export(self):
+        parcelas = [{"id": p.get_id(), "name": p.get_name()} for p in self._finca.get_children()]
+        ExportDialog(self._root, parcelas, self._db, self._error_handler)
+
+    # ------------------------------------------------------------------
+    # Placeholders para Arduino panel (conectar asignaciones y firmware)
+    # ------------------------------------------------------------------
+    def _on_assign_board(self, board_id: str):
+        # Abrir diálogo de asignación
+        from ui.dialogs.assign_arduino_dialog import AssignArduinoDialog
+        parcelas = [{"id": p.get_id(), "name": p.get_name()} for p in self._finca.get_children()]
+        AssignArduinoDialog(self._root, board_id, parcelas, on_confirm=self._confirm_assign_board)
+
+    def _confirm_assign_board(self, board_id: str, parcela_id: str):
+        # Actualizar modelo
+        board = next((b for b in self._boards if b.id == board_id), None)
+        if board:
+            board.parcela = parcela_id
+            self.arduino_panel.update_board(board)
+        self._append_log(f"Placa {board_id} asignada a parcela {parcela_id}", tipo="modo")
+
+    def _on_unassign_board(self, board_id: str):
+        board = next((b for b in self._boards if b.id == board_id), None)
+        if board:
+            board.parcela = None
+            self.arduino_panel.update_board(board)
+
+    def _on_firmware_update(self, board_id: str) -> None:
+        board = next((b for b in self._boards if b.id == board_id), None)
+        if board is None:  # ← PyCharm entiende que después board no es None
+            return
+        from ui.dialogs.firmware_dialog import FirmwareDialog
+        FirmwareDialog(
+            self._root,
+            board_id=board.id,
+            port=board.port,  # ← ahora existe
+            current_version=board.firmware_version or "Desconocida",
+        )
+
+
+# --------------------------------------------------------------------------
+# Diálogo de entrada
+# --------------------------------------------------------------------------
+class _InputDialog(ctk.CTkToplevel):
+    def __init__(self, parent, title: str, fields: list[str]):
+        super().__init__(parent)
+        self.title(title)
+        self.resizable(False, False)
+        # SIN grab_set() aquí
+
+        self.result = None
+        self._entries = []
+
+        for i, label in enumerate(fields):
+            ctk.CTkLabel(self, text=label, font=FONT_NORMAL).grid(
+                row=i, column=0, padx=14, pady=6, sticky="e")
+            entry = ctk.CTkEntry(self, width=200, font=FONT_NORMAL)
+            entry.grid(row=i, column=1, padx=14, pady=6)
+            self._entries.append(entry)
+
+        ctk.CTkButton(
+            self, text="Aceptar",
+            font=FONT_NORMAL,
+            command=self._accept,
+        ).grid(row=len(fields), column=0, columnspan=2, pady=12)
+
+        self._entries[0].focus()
+
+        # Esperar renderizado antes de capturar el foco
+        self.update()
+        self.after(10, lambda: self._set_grab())  # type: ignore[arg-type]
+        self.wait_window()
+
+    # Fix errores 518 y 524 en _InputDialog
+    def _set_grab(self) -> None:  # ← tipo de retorno explícito
+        try:
+            self.grab_set()
+        except tk.TclError:  # ← excepción específica, no Exception
+            pass
+
+    def _accept(self) -> None:
+        self.result = [e.get() for e in self._entries]
+        self.destroy()
+
+### ./ui/panels/arduino_panel.py ###
+"""
+ui/panels/arduino_panel.py
+Panel de gestión de Arduinos.
+Izquierda: lista de placas con estado, asignación, firmware.
+Derecha: detalle de la placa seleccionada (sensores, actuadores, módulos).
+"""
+from __future__ import annotations
+
+import customtkinter as ctk
+
+from domain.boards import Board
+from ui.theme import FONT_TITLE, FONT_NORMAL, FONT_SMALL, COLORS
+
+# Tipos de conexión
+CONN_ICONS = {
+    "usb": "🔌 USB",
+    "wifi": "📶 WiFi",
+    "bluetooth": "📡 BT",
+    "unknown": "❓"
+}
+
+
+class ArduinoPanel(ctk.CTkFrame):
+    def __init__(
+            self,
+            master,
+            on_assign=None,
+            on_unassign=None,
+            on_firmware_update=None,
+            on_scan_bluetooth=None,
+            **kwargs
+    ):
+        super().__init__(master, **kwargs)
+
+        self.grid_columnconfigure(0, weight=1, minsize=300)
+        self.grid_columnconfigure(1, weight=3)
+        self.grid_rowconfigure(0, weight=1)
+
+        # Callbacks
+        self._on_assign = on_assign  # placa_id -> abre diálogo
+        self._on_unassign = on_unassign  # placa_id -> desasigna
+        self._on_firmware_update = on_firmware_update  # placa_id -> abre diálogo firmware
+        self._on_scan_bluetooth = on_scan_bluetooth  # función para escanear BT
+
+        self._boards: list[Board] = []  # lista de objetos Board (definidos abajo)
+        self._selected_board_id = None
+
+        self._build_left()
+        self._build_right()
+
+    # ------------------------------------------------------------------
+    # Panel izquierdo: lista de placas + botón escanear BT
+    # ------------------------------------------------------------------
+    def _build_left(self):
+        left = ctk.CTkFrame(self)
+        left.grid(row=0, column=0, sticky="nsew", padx=(8, 4), pady=8)
+        left.grid_rowconfigure(1, weight=1)
+        left.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(left, text="Placas Arduino", font=FONT_TITLE).grid(
+            row=0, column=0, pady=(10, 4), padx=10, sticky="w")
+
+        # Lista scrollable
+        self._list_frame = ctk.CTkScrollableFrame(left, label_text="")
+        self._list_frame.grid(row=1, column=0, sticky="nsew", padx=6, pady=4)
+        self._list_frame.grid_columnconfigure(0, weight=1)
+
+        # Botones inferiores
+        btn_frame = ctk.CTkFrame(left, fg_color="transparent")
+        btn_frame.grid(row=2, column=0, pady=6, padx=6, sticky="ew")
+        ctk.CTkButton(
+            btn_frame, text="Buscar placas Bluetooth",
+            font=FONT_SMALL,
+            command=self._on_scan_bluetooth
+        ).pack(side="left", padx=4, fill="x", expand=True)
+
+    # ------------------------------------------------------------------
+    # Panel derecho: detalle de placa seleccionada
+    # ------------------------------------------------------------------
+    def _build_right(self):
+        right = ctk.CTkFrame(self)
+        right.grid(row=0, column=1, sticky="nsew", padx=(4, 8), pady=8)
+        right.grid_columnconfigure(0, weight=1)
+
+        # Título
+        self._lbl_title = ctk.CTkLabel(
+            right, text="Seleccioná una placa",
+            font=FONT_TITLE, anchor="w"
+        )
+        self._lbl_title.grid(row=0, column=0, padx=12, pady=(12, 8), sticky="ew")
+
+        # Información general
+        row = 1
+        self._info_labels = {}
+        fields = [
+            ("ID:", "id"),
+            ("Conexión:", "conn"),
+            ("Estado:", "status"),
+            ("Parcela asignada:", "parcela"),
+            ("Firmware:", "firmware"),
+        ]
+        for label, key in fields:
+            ctk.CTkLabel(right, text=label, font=FONT_NORMAL).grid(
+                row=row, column=0, padx=12, pady=2, sticky="w")
+            lbl = ctk.CTkLabel(right, text="—", font=FONT_NORMAL)
+            lbl.grid(row=row, column=1, padx=12, pady=2, sticky="w")
+            self._info_labels[key] = lbl
+            row += 1
+
+        # Botones de acción
+        btn_frame = ctk.CTkFrame(right, fg_color="transparent")
+        btn_frame.grid(row=row, column=0, columnspan=2, pady=8)
+        self._btn_assign = ctk.CTkButton(
+            btn_frame, text="Asignar a parcela",
+            font=FONT_SMALL,
+            command=lambda: self._on_assign(self._selected_board_id) if self._selected_board_id else None
+        )
+        self._btn_assign.pack(side="left", padx=4)
+        self._btn_unassign = ctk.CTkButton(
+            btn_frame, text="Desasignar",
+            font=FONT_SMALL,
+            fg_color="#EF4444", hover_color="#B91C1C",
+            command=lambda: self._on_unassign(self._selected_board_id) if self._selected_board_id else None
+        )
+        self._btn_unassign.pack(side="left", padx=4)
+        self._btn_firmware = ctk.CTkButton(
+            btn_frame, text="Actualizar firmware",
+            font=FONT_SMALL,
+            command=lambda: self._on_firmware_update(self._selected_board_id) if self._selected_board_id else None
+        )
+        self._btn_firmware.pack(side="left", padx=4)
+        row += 1
+
+        # Periféricos (detalle fijo)
+        ctk.CTkLabel(right, text="Periféricos", font=FONT_NORMAL).grid(
+            row=row, column=0, padx=12, pady=(12, 4), sticky="w")
+        row += 1
+
+        self._periph_text = ctk.CTkTextbox(
+            right, height=120,
+            font=FONT_SMALL,
+            state="disabled", wrap="word"
+        )
+        self._periph_text.grid(row=row, column=0, columnspan=2, padx=12, pady=(0, 12), sticky="nsew")
+        right.grid_rowconfigure(row, weight=1)
+
+    # ------------------------------------------------------------------
+    # API pública
+    # ------------------------------------------------------------------
+    def set_boards(self, boards: list):
+        """Actualizar la lista completa de placas."""
+        self._boards = boards
+        self._refresh_list()
+
+    def update_board(self, board):
+        """Actualizar o añadir una placa sin rehacer toda la lista."""
+        # Buscar si ya existe
+        for i, b in enumerate(self._boards):
+            if b.id == board.id:
+                self._boards[i] = board
+                break
+        else:
+            self._boards.append(board)
+        self._refresh_list()
+
+    def show_board_detail(self, board_id: str):
+        """Muestra el detalle de la placa con ese ID."""
+        self._selected_board_id = board_id
+        board = next((b for b in self._boards if b.id == board_id), None)
+        if not board:
+            self._lbl_title.configure(text="Placa no encontrada")
+            return
+        self._lbl_title.configure(text=f"Placa {board.id}")
+        self._info_labels["id"].configure(text=board.id)
+        self._info_labels["conn"].configure(text=CONN_ICONS.get(board.conn, board.conn))
+        self._info_labels["status"].configure(text=board.status)
+        self._info_labels["parcela"].configure(text=board.parcela or "Sin asignar")
+        self._info_labels["firmware"].configure(text=board.firmware_version or "Desconocido")
+
+        # Periféricos (simulación, luego vendrán de la placa)
+        periph = (
+            f"Sensores: DHT22 (temp/hum, pin D2), Capacitivo suelo (A0)\n"
+            f"Actuadores: Relay bomba (pin D3)\n"
+            f"Comunicación: {board.conn_module or 'No definido'}"
+        )
+        self._periph_text.configure(state="normal")
+        self._periph_text.delete("1.0", "end")
+        self._periph_text.insert("end", periph)
+        self._periph_text.configure(state="disabled")
+
+        # Habilitar botones
+        self._btn_assign.configure(state="normal")
+        self._btn_unassign.configure(state="normal")
+        self._btn_firmware.configure(state="normal")
+
+    # ------------------------------------------------------------------
+    # Interno
+    # ------------------------------------------------------------------
+    def _refresh_list(self):
+        for w in self._list_frame.winfo_children():
+            w.destroy()
+
+        for i, board in enumerate(self._boards):
+            row = ctk.CTkFrame(self._list_frame, corner_radius=6,
+                               border_width=1, border_color=COLORS["border"])
+            row.grid(row=i, column=0, sticky="ew", pady=2, padx=2)
+            row.grid_columnconfigure(0, weight=1)
+
+            # Nombre / ID
+            lbl_name = ctk.CTkLabel(row, text=board.id, font=FONT_NORMAL, anchor="w")
+            lbl_name.grid(row=0, column=0, padx=10, pady=(6, 0), sticky="w")
+
+            # Info secundaria
+            info = f"{CONN_ICONS.get(board.conn, board.conn)} • {board.status} • {board.parcela or 'Sin asignar'}"
+            lbl_info = ctk.CTkLabel(row, text=info, font=FONT_SMALL, text_color="gray")
+            lbl_info.grid(row=1, column=0, padx=10, pady=(0, 6), sticky="w")
+
+            # Botón asignar/desasignar (mini)
+            btn_frame = ctk.CTkFrame(row, fg_color="transparent")
+            btn_frame.grid(row=0, column=1, rowspan=2, padx=4, sticky="e")
+
+            if board.parcela:
+                ctk.CTkButton(
+                    btn_frame, text="Desasignar",
+                    width=80, height=24, font=("Roboto", 10),
+                    fg_color="#EF4444", hover_color="#B91C1C",
+                    command=lambda bid=board.id: self._on_unassign(bid)
+                ).pack(side="left", padx=2)
+            else:
+                ctk.CTkButton(
+                    btn_frame, text="Asignar",
+                    width=70, height=24, font=("Roboto", 10),
+                    command=lambda bid=board.id: self._on_assign(bid)
+                ).pack(side="left", padx=2)
+
+            # Clic en la fila → seleccionar
+            for w in (row, lbl_name, lbl_info):
+                w.bind("<Button-1>", lambda e, bid=board.id: self.show_board_detail(bid))
+
+### ./ui/panels/help_panel.py ###
+"""
+ui/panels/help_panel.py
+Panel de ayuda integrada con texto en español.
+"""
+import customtkinter as ctk
+
+from help.help_text import HELP_TEXT
+from ui.theme import FONT_TITLE
+
+
+class HelpPanel(ctk.CTkFrame):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, **kwargs)
+
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+
+        # Título
+        ctk.CTkLabel(
+            self,
+            text="Ayuda de FoT",
+            font=FONT_TITLE
+        ).grid(row=0, column=0, padx=16, pady=(16, 8), sticky="w")
+
+        # Cuadro de texto con la ayuda
+        self._text = ctk.CTkTextbox(
+            self,
+            font=("Courier New", 12),  # monoespaciado para que quede limpio
+            wrap="word",
+            state="normal"
+        )
+        self._text.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
+
+        # Insertar contenido
+        self._text.insert("1.0", HELP_TEXT)
+        self._text.configure(state="disabled")  # solo lectura
+
+### ./ui/panels/__init__.py ###
+
+### ./ui/panels/login_panel.py ###
+
+### ./ui/panels/main_panel.py ###
+"""
+ui/panels/main_panel.py
+Panel principal dividido en dos columnas:
+- Izquierda: ParcelaList
+- Derecha: detalle de parcela + SensorChart
+- Abajo: EventLog
+"""
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Optional
+
+import customtkinter as ctk
+
+from ui.theme import FSM_COLORS, FONT_TITLE, FONT_NORMAL, FONT_SMALL
+from ui.widgets.event_log import EventLog
+from ui.widgets.parcela_list import ParcelaList
+from ui.widgets.sensor_chart import SensorChart
+
+
+class MainPanel(ctk.CTkFrame):
+    def __init__(
+            self,
+            master,
+            on_add_parcela: Optional[Callable[[], None]] = None,
+            on_delete_parcela: Optional[Callable[[str], None]] = None,
+            on_select_parcela: Optional[Callable[[str], None]] = None,
+            on_apply_thresholds: Optional[Callable[[str, str], None]] = None,
+            on_mode_change: Optional[Callable[[str], None]] = None,
+            on_irrigate: Optional[Callable[[], None]] = None,
+            on_stop: Optional[Callable[[], None]] = None,
+            **kwargs,
+    ):
+        super().__init__(master, **kwargs)
+
+        # Configurar grid
+        self.grid_columnconfigure(0, weight=1, minsize=240)
+        self.grid_columnconfigure(1, weight=3)
+        self.grid_rowconfigure(0, weight=3)
+        self.grid_rowconfigure(1, weight=1, minsize=150)
+
+        self._callbacks = {
+            "add_parcela": on_add_parcela,
+            "select_parcela": on_select_parcela,
+            "apply_thresholds": on_apply_thresholds,
+            "delete_parcela": on_delete_parcela,
+            "mode_change": on_mode_change,
+            "irrigate": on_irrigate,
+            "stop": on_stop,
+        }
+
+        self._selected_parcela_id: str | None = None
+        self._build_left()
+        self._build_right()
+        self._build_bottom()
+
+        # Vinculamos el clic en la lista para que llame a select_parcela
+        self.parcela_list._on_select = self._on_parcela_selected
+
+    # ------------------------------------------------------------------
+    def _build_left(self):
+        left_frame = ctk.CTkFrame(self)
+        left_frame.grid(row=0, column=0, sticky="nsew", padx=(8, 4), pady=8)
+        left_frame.grid_rowconfigure(1, weight=1)
+        left_frame.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(left_frame, text="Parcelas", font=FONT_TITLE).grid(
+            row=0, column=0, pady=(10, 4), padx=10, sticky="w")
+
+        self.parcela_list = ParcelaList(
+            left_frame,
+            on_context_menu=self._on_context_menu,
+        )
+        self.parcela_list.grid(row=1, column=0, sticky="nsew", padx=6, pady=4)
+
+        btn_frame = ctk.CTkFrame(left_frame, fg_color="transparent")
+        btn_frame.grid(row=2, column=0, pady=6, padx=6, sticky="ew")
+        btn_frame.grid_columnconfigure((0, 1), weight=1)
+
+        ctk.CTkButton(
+            btn_frame, text="+ Añadir parcela",
+            font=FONT_SMALL,
+            command=self._on_add_parcela,
+        ).grid(row=0, column=0, padx=2, sticky="ew")
+
+        # Puedes agregar botón eliminar si quieres
+        ctk.CTkButton(
+            btn_frame, text="Eliminar",
+            font=FONT_SMALL,
+            fg_color="#EF4444", hover_color="#B91C1C",
+            command=self._on_delete_parcela,
+        ).grid(row=0, column=1, padx=2, sticky="ew")
+
+    def _build_right(self):
+        right_frame = ctk.CTkFrame(self)
+        right_frame.grid(row=0, column=1, sticky="nsew", padx=(4, 8), pady=8)
+        right_frame.grid_columnconfigure(1, weight=1)
+
+        row = 0
+        # Título de parcela
+        self.lbl_title = ctk.CTkLabel(
+            right_frame, text="— Ninguna parcela seleccionada —",
+            font=FONT_TITLE,
+        )
+        self.lbl_title.grid(row=row, column=0, columnspan=2,
+                            padx=12, pady=(12, 4), sticky="w")
+        row += 1
+
+        # Estado FSM
+        ctk.CTkLabel(right_frame, text="Estado:", font=FONT_NORMAL).grid(
+            row=row, column=0, padx=12, pady=4, sticky="w")
+        self.lbl_fsm = ctk.CTkLabel(
+            right_frame, text="—", width=130,
+            font=("Roboto", 12, "bold"),
+            corner_radius=6,
+            fg_color="#6B7280",
+            text_color="white",
+        )
+        self.lbl_fsm.grid(row=row, column=1, padx=12, pady=4, sticky="w")
+        row += 1
+
+        # Lecturas de sensores (tarjetas pequeñas)
+        self.sensor_labels = {}
+        for label, key in [("Humedad suelo (%)", "hum_suelo"),
+                           ("Humedad aire (%)", "hum_aire"),
+                           ("Temperatura (°C)", "temp")]:
+            frame_sensor = ctk.CTkFrame(right_frame, corner_radius=8, border_width=1, border_color="#3F3F3F")
+            frame_sensor.grid(row=row, column=0, columnspan=2, padx=12, pady=4, sticky="ew")
+            ctk.CTkLabel(frame_sensor, text=label, font=FONT_SMALL).pack(side="left", padx=8)
+            lbl_val = ctk.CTkLabel(frame_sensor, text="—", font=FONT_NORMAL)
+            lbl_val.pack(side="left", padx=8)
+            # Podrías añadir barra de progreso para humedad suelo
+            self.sensor_labels[key] = lbl_val
+            row += 1
+
+        # Estado última lectura
+        self.lbl_last_reading = ctk.CTkLabel(
+            right_frame, text="Sin datos", font=FONT_SMALL, text_color="gray")
+        self.lbl_last_reading.grid(row=row, column=0, columnspan=2, padx=12, pady=(2, 8), sticky="w")
+        row += 1
+
+        # Separador
+        ctk.CTkFrame(right_frame, height=2, fg_color="#3F3F3F").grid(
+            row=row, column=0, columnspan=2, sticky="ew", padx=12, pady=6)
+        row += 1
+
+        # Controles: modo, umbrales, botones
+        # Selector de modo
+        ctk.CTkLabel(right_frame, text="Modo:", font=FONT_NORMAL).grid(
+            row=row, column=0, padx=12, pady=4, sticky="w")
+        self.option_modo = ctk.CTkSegmentedButton(
+            right_frame,
+            values=["Reposo", "Automático"],
+            font=FONT_NORMAL,
+            command=self._on_mode_changed,
+        )
+        self.option_modo.set("Reposo")
+        self.option_modo.grid(row=row, column=1, padx=12, pady=4, sticky="w")
+        row += 1
+
+        # Umbrales
+        ctk.CTkLabel(right_frame, text="Umbral mín (%):", font=FONT_NORMAL).grid(
+            row=row, column=0, padx=12, pady=4, sticky="w")
+        self.entry_min = ctk.CTkEntry(right_frame, width=80, font=FONT_NORMAL)
+        self.entry_min.grid(row=row, column=1, padx=12, pady=4, sticky="w")
+        row += 1
+
+        ctk.CTkLabel(right_frame, text="Umbral máx (%):", font=FONT_NORMAL).grid(
+            row=row, column=0, padx=12, pady=4, sticky="w")
+        self.entry_max = ctk.CTkEntry(right_frame, width=80, font=FONT_NORMAL)
+        self.entry_max.grid(row=row, column=1, padx=12, pady=4, sticky="w")
+        row += 1
+
+        ctk.CTkButton(
+            right_frame, text="Aplicar umbrales",
+            font=FONT_NORMAL,
+            command=self._on_apply_thresholds,
+        ).grid(row=row, column=0, columnspan=2, pady=6)
+        row += 1
+
+        # Botones de control manual
+        ctrl_frame = ctk.CTkFrame(right_frame, fg_color="transparent")
+        ctrl_frame.grid(row=row, column=0, columnspan=2, pady=6)
+        self.btn_irrigate = ctk.CTkButton(
+            ctrl_frame, text="▶ Activar riego",
+            font=FONT_NORMAL,
+            fg_color="#3B82F6", hover_color="#1D4ED8",
+            state="disabled",
+            command=self._on_irrigate,
+        )
+        self.btn_irrigate.pack(side="left", padx=8)
+        self.btn_stop = ctk.CTkButton(
+            ctrl_frame, text="■ Detener riego",
+            font=FONT_NORMAL,
+            fg_color="#EF4444", hover_color="#B91C1C",
+            state="disabled",
+            command=self._on_stop,
+        )
+        self.btn_stop.pack(side="left", padx=8)
+        row += 1
+
+        # Gráfico
+        self.chart = SensorChart(right_frame)
+        self.chart.grid(row=row, column=0, columnspan=2, sticky="nsew", padx=12, pady=(6, 4))
+        right_frame.grid_rowconfigure(row, weight=1)  # para que el gráfico se expanda
+
+        # Indicador de umbrales y alertas (debajo del gráfico, pero dentro del mismo grid)
+        row += 1
+        self.lbl_umbral_info = ctk.CTkLabel(
+            right_frame, text="Umbral activo: —",
+            font=FONT_SMALL, text_color="gray"
+        )
+        self.lbl_umbral_info.grid(row=row, column=0, columnspan=2, padx=12, pady=(0, 2), sticky="w")
+
+        self.lbl_alerts = ctk.CTkLabel(
+            right_frame, text="Alertas activas: —",
+            font=FONT_SMALL, text_color="#EF4444"
+        )
+        self.lbl_alerts.grid(row=row + 1, column=0, columnspan=2, padx=12, sticky="w")
+
+    def _build_bottom(self):
+        self.event_log = EventLog(self)
+        self.event_log.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=8, pady=(0, 8))
+
+    # ------------------------------------------------------------------
+    # Callbacks que conectan con MainWindow
+    def _on_add_parcela(self):
+        if self._callbacks["add_parcela"]:
+            self._callbacks["add_parcela"]()
+
+    def _on_parcela_selected(self, parcela_id):
+        self._selected_parcela_id = parcela_id
+        if self._callbacks["select_parcela"]:
+            self._callbacks["select_parcela"](parcela_id)
+
+    def _on_mode_changed(self, value):
+        if self._callbacks["mode_change"]:
+            self._callbacks["mode_change"](value.lower())
+
+    def _on_apply_thresholds(self):
+        if self._callbacks["apply_thresholds"]:
+            min_v = self.entry_min.get()
+            max_v = self.entry_max.get()
+            self._callbacks["apply_thresholds"](min_v, max_v)
+
+    def _on_irrigate(self):
+        if self._callbacks["irrigate"]:
+            self._callbacks["irrigate"]()
+
+    def _on_stop(self):
+        if self._callbacks["stop"]:
+            self._callbacks["stop"]()
+
+    def _on_context_menu(self, parcela_id: str, action: str = "") -> None:
+        if action == "delete":
+            if self._callbacks.get("delete_parcela"):
+                self._callbacks["delete_parcela"](parcela_id)
+        elif action == "detail":
+            # por ahora selecciona la parcela; el panel de detalle
+            # completo se abrirá en el siguiente paso del plan
+            self._on_parcela_selected(parcela_id)
+
+    def _on_delete_parcela(self) -> None:
+        # El botón "Eliminar" de la barra usa la parcela seleccionada
+        if self._selected_parcela_id:
+            if self._callbacks.get("delete_parcela"):
+                self._callbacks["delete_parcela"](self._selected_parcela_id)
+
+    # ------------------------------------------------------------------
+    # Métodos para actualizar la UI desde el exterior
+    def set_parcelas(self, parcelas):
+        self.parcela_list.set_parcelas(parcelas)
+
+    def update_detail(self, parcela):
+        """Mostrar los datos de una parcela en el panel derecho."""
+        self.lbl_title.configure(text=parcela.get_name())
+        fsm = getattr(parcela, "fsm_state", "Idle")
+        self.lbl_fsm.configure(text=fsm, fg_color=FSM_COLORS.get(fsm, "#6B7280"))
+
+        # Lecturas
+        reading = parcela.get_latest_reading()
+        self.sensor_labels["hum_suelo"].configure(text=_fmt(reading.get("hum_suelo")))
+        self.sensor_labels["hum_aire"].configure(text=_fmt(reading.get("hum_aire")))
+        self.sensor_labels["temp"].configure(text=_fmt(reading.get("temp")))
+        last_ts = reading.get("timestamp", None)
+        if last_ts:
+            self.lbl_last_reading.configure(text=f"Hace {last_ts}")  # simplificado
+        else:
+            self.lbl_last_reading.configure(text="Sin datos")
+
+        # Umbrales
+        self.entry_min.delete(0, "end")
+        self.entry_min.insert(0, str(parcela.umbral_min))
+        self.entry_max.delete(0, "end")
+        self.entry_max.insert(0, str(parcela.umbral_max))
+        self.lbl_umbral_info.configure(
+            text=f"Umbral activo: {parcela.umbral_min}% – {parcela.umbral_max}%"
+        )
+
+        # Modo
+        modo = parcela.modo
+        self.option_modo.set("Automático" if modo == "auto" else "Reposo")
+
+        # Botones de riego (solo habilitados si el estado es Idle)
+        state = "normal" if fsm == "Idle" else "disabled"
+        self.btn_irrigate.configure(state=state)
+        self.btn_stop.configure(state=state)
+
+        # Chart: datos históricos (simulado por ahora)
+        # Aquí deberías obtener las series temporales desde DB o parcela.
+        # Por ahora, datos vacíos:
+        self.chart.update_data([], [], [], [], parcela.umbral_min, parcela.umbral_max)
+
+    def update_connection_status(self, parcela_id, connected: bool):
+        """Actualiza el indicador de conexión de una fila."""
+        # Podrías añadir lógica en parcela_list
+        pass
+
+    def add_event(self, text: str, tipo: str = ""):
+        self.event_log.add_line(text, tipo)
+
+
+def _fmt(value):
+    if value is None:
+        return "—"
+    try:
+        return f"{float(value):.1f}"
+    except (TypeError, ValueError):
+        return "—"
+
+### ./ui/panels/parcela_detail_panel.py ###
+"""
+ui/panels/parcela_detail_panel.py
+Ventana independiente con el detalle completo de una parcela:
+info general, variables en tiempo real, gráfico histórico,
+controles avanzados y registro de eventos.
+
+Uso (desde MainWindow o MainPanel):
+    ParcelaDetailPanel(
+        parent,
+        parcela=parcela,          # objeto Parcela
+        db=Database(),
+        mqtt_bus=MQTTEventBus(),
+        on_command=lambda cmd, parcela_id: ...
+    )
+"""
+from __future__ import annotations
+
+import csv
+import json
+from datetime import datetime
+from tkinter import filedialog
+
+import customtkinter as ctk
+
+from ui.theme import FSM_COLORS, FONT_TITLE, FONT_NORMAL, FONT_SMALL, FONT_MONO, COLORS
+from ui.widgets.sensor_chart import SensorChart
+
+
+class ParcelaDetailPanel(ctk.CTkToplevel):
+    def __init__(self, parent, parcela, db, mqtt_bus, on_command=None):
+        super().__init__(parent)
+        self.title(f"Parcela {parcela.get_name()} ({parcela.get_id()})")
+        self.geometry("960x720")
+        self.minsize(800, 600)
+        self.resizable(True, True)
+
+        self._parcela = parcela
+        self._db = db
+        self._mqtt_bus = mqtt_bus
+        self._on_command = on_command  # callback para comandos manuales
+
+        self.grab_set()  # hace que la ventana sea modal respecto a la principal
+
+        # Contenido
+        self._build()
+        self._refresh()
+
+    def _build(self):
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+
+        # ---------- Cabecera: información general ----------
+        header = ctk.CTkFrame(self, corner_radius=8, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=12, pady=12)
+        header.grid_columnconfigure(1, weight=1)
+
+        self._lbl_title = ctk.CTkLabel(header, text="", font=FONT_TITLE, anchor="w")
+        self._lbl_title.grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
+
+        # Rejilla de datos: ID, Placa, Modo, Estado, Uptime
+        info_data = [
+            ("ID:", "id"),
+            ("Placa asignada:", "placa"),
+            ("Modo:", "modo"),
+            ("Estado:", "estado"),
+            ("Tiempo encendida:", "uptime"),
+        ]
+        self._info_labels = {}
+        for i, (label, key) in enumerate(info_data):
+            ctk.CTkLabel(header, text=label, font=FONT_NORMAL).grid(
+                row=1 + i // 3, column=(i % 3) * 2, padx=(0, 4), pady=2, sticky="e")
+            lbl = ctk.CTkLabel(header, text="—", font=FONT_NORMAL, anchor="w")
+            lbl.grid(row=1 + i // 3, column=(i % 3) * 2 + 1, padx=4, pady=2, sticky="w")
+            self._info_labels[key] = lbl
+
+        # ---------- Pestañas: Variables + Controles y Eventos ----------
+        self._tabview = ctk.CTkTabview(self, corner_radius=8)
+        self._tabview.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
+        self._tabview.add("Variables y controles")
+        self._tabview.add("Historial de eventos")
+        self._tabview.tab("Variables y controles").grid_columnconfigure(0, weight=1)
+        self._tabview.tab("Variables y controles").grid_rowconfigure(1, weight=1)
+        self._tabview.tab("Historial de eventos").grid_columnconfigure(0, weight=1)
+        self._tabview.tab("Historial de eventos").grid_rowconfigure(0, weight=1)
+
+        self._build_sensors_tab()
+        self._build_events_tab()
+
+    def _build_sensors_tab(self):
+        tab = self._tabview.tab("Variables y controles")
+        # Fila 0: tarjetas de variables
+        cards = ctk.CTkFrame(tab, fg_color="transparent")
+        cards.grid(row=0, column=0, sticky="ew", padx=8, pady=8)
+        cards.grid_columnconfigure((0, 1, 2), weight=1)
+
+        sensor_info = [
+            ("Humedad suelo", "hum_suelo", "%", True),  # con barra
+            ("Humedad aire", "hum_aire", "%", False),
+            ("Temperatura", "temp", "°C", False),
+        ]
+        self._sensor_widgets = {}
+        for col, (name, key, unit, show_bar) in enumerate(sensor_info):
+            card = ctk.CTkFrame(cards, corner_radius=8, border_width=1,
+                                border_color=COLORS["border"])
+            card.grid(row=0, column=col, padx=6, pady=6, sticky="nsew")
+            card.grid_columnconfigure(0, weight=1)
+
+            ctk.CTkLabel(card, text=name, font=FONT_NORMAL).grid(row=0, column=0, pady=(8, 0), padx=8, sticky="w")
+            lbl_val = ctk.CTkLabel(card, text="—", font=("Roboto", 24, "bold"))
+            lbl_val.grid(row=1, column=0, padx=8, pady=(4, 0), sticky="w")
+            lbl_unit = ctk.CTkLabel(card, text=unit, font=FONT_SMALL, text_color="gray")
+            lbl_unit.grid(row=2, column=0, padx=8, pady=(0, 4), sticky="w")
+
+            if show_bar:
+                bar = ctk.CTkProgressBar(card, height=12)
+                bar.grid(row=3, column=0, padx=8, pady=(0, 8), sticky="ew")
+                bar.set(0)
+                self._sensor_widgets[key] = (lbl_val, bar)
+            else:
+                self._sensor_widgets[key] = (lbl_val, None)
+
+        # Fila 1: gráfico histórico
+        chart_frame = ctk.CTkFrame(tab, corner_radius=8, border_width=1,
+                                   border_color=COLORS["border"])
+        chart_frame.grid(row=1, column=0, sticky="nsew", padx=8, pady=8)
+        chart_frame.grid_columnconfigure(0, weight=1)
+        chart_frame.grid_rowconfigure(0, weight=1)
+        self._chart = SensorChart(chart_frame)
+        self._chart.grid(row=0, column=0, sticky="nsew", padx=4, pady=4)
+
+        # Fila 2: controles (modo, umbrales, riego, fallo)
+        ctrl = ctk.CTkFrame(tab, fg_color="transparent")
+        ctrl.grid(row=2, column=0, sticky="ew", padx=8, pady=8)
+        ctrl.grid_columnconfigure(1, weight=1)
+
+        row = 0
+        ctk.CTkLabel(ctrl, text="Modo:", font=FONT_NORMAL).grid(row=row, column=0, padx=4, pady=4, sticky="e")
+        self._opt_mode = ctk.CTkSegmentedButton(
+            ctrl, values=["Reposo", "Automático"], font=FONT_NORMAL,
+            command=self._on_mode_change
+        )
+        self._opt_mode.grid(row=row, column=1, padx=4, pady=4, sticky="w")
+        row += 1
+
+        ctk.CTkLabel(ctrl, text="Umbral mín (%):", font=FONT_NORMAL).grid(row=row, column=0, padx=4, pady=4, sticky="e")
+        self._entry_min = ctk.CTkEntry(ctrl, width=80, font=FONT_NORMAL)
+        self._entry_min.grid(row=row, column=1, padx=4, pady=4, sticky="w")
+        row += 1
+
+        ctk.CTkLabel(ctrl, text="Umbral máx (%):", font=FONT_NORMAL).grid(row=row, column=0, padx=4, pady=4, sticky="e")
+        self._entry_max = ctk.CTkEntry(ctrl, width=80, font=FONT_NORMAL)
+        self._entry_max.grid(row=row, column=1, padx=4, pady=4, sticky="w")
+        row += 1
+
+        btn_frame = ctk.CTkFrame(ctrl, fg_color="transparent")
+        btn_frame.grid(row=row, column=1, sticky="w", pady=4)
+        ctk.CTkButton(btn_frame, text="Aplicar umbrales", font=FONT_SMALL,
+                      command=self._apply_thresholds).pack(side="left", padx=2)
+
+        self._btn_irrigate = ctk.CTkButton(  # ← guardar referencia
+            btn_frame, text="Activar riego", font=FONT_SMALL,
+            fg_color="#3B82F6", hover_color="#1D4ED8",
+            command=self._cmd_irrigate)
+        self._btn_irrigate.pack(side="left", padx=2)
+
+        self._btn_stop = ctk.CTkButton(  # ← guardar referencia
+            btn_frame, text="Detener riego", font=FONT_SMALL,
+            fg_color="#EF4444", hover_color="#B91C1C",
+            command=self._cmd_stop)
+        self._btn_stop.pack(side="left", padx=2)
+        row += 1
+
+        # Botón reiniciar fallo (visible solo en estado Fallo)
+        self._btn_reset_fault = ctk.CTkButton(
+            ctrl, text="Reiniciar fallo", font=FONT_SMALL,
+            fg_color=COLORS["warning"], hover_color="#D97706",
+            command=self._cmd_reset_fault
+        )
+        self._btn_reset_fault.grid(row=row, column=1, pady=4, sticky="w")
+        self._btn_reset_fault.grid_remove()  # oculto por defecto
+        row += 1
+
+        # Habilitar/deshabilitar sensores
+        sensor_ctrl = ctk.CTkFrame(ctrl, fg_color="transparent")
+        sensor_ctrl.grid(row=row, column=1, sticky="w", pady=4)
+        self._chk_hum_suelo = ctk.CTkCheckBox(sensor_ctrl, text="Sensor suelo",
+                                              font=FONT_SMALL, command=self._toggle_sensor)
+        self._chk_hum_suelo.pack(side="left", padx=4)
+        self._chk_temp = ctk.CTkCheckBox(sensor_ctrl, text="DHT22",
+                                         font=FONT_SMALL, command=self._toggle_sensor)
+        self._chk_temp.pack(side="left", padx=4)
+
+    def _build_events_tab(self):
+        tab = self._tabview.tab("Historial de eventos")
+        # Filtros
+        filt_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        filt_frame.grid(row=0, column=0, sticky="ew", padx=8, pady=4)
+        self._event_filter = ctk.StringVar(value="todos")
+        for i, (text, val) in enumerate([
+            ("Todo", "todos"), ("Riegos", "riego"),
+            ("Cambios modo", "modo"), ("Errores", "error")
+        ]):
+            ctk.CTkRadioButton(filt_frame, text=text, variable=self._event_filter,
+                               value=val, font=FONT_SMALL,
+                               command=self._apply_event_filter).grid(row=0, column=i, padx=4)
+
+        # Botón exportar
+        ctk.CTkButton(filt_frame, text="Exportar", font=FONT_SMALL,
+                      command=self._export_events).grid(row=0, column=4, padx=8, sticky="e")
+        filt_frame.grid_columnconfigure(4, weight=1)
+
+        # Cuadro de texto de eventos
+        self._event_text = ctk.CTkTextbox(tab, font=FONT_MONO, wrap="word", state="disabled")
+        self._event_text.grid(row=1, column=0, sticky="nsew", padx=8, pady=8)
+        self._events_raw = []  # lista de dicts: timestamp, tipo, descripcion
+
+    def _refresh(self):
+        """Carga todos los datos actuales de la parcela."""
+        p = self._parcela
+        self._lbl_title.configure(text=f"{p.get_name()} ({p.get_id()})")
+        self._info_labels["id"].configure(text=p.get_id())
+        placa_id = getattr(p, "placa_id", None) or "—"
+        conn = getattr(p, "connection", "") or "—"
+        self._info_labels["placa"].configure(text=f"{placa_id} ({conn})" if placa_id != "—" else "—")
+        modo = "Automático" if p.modo == "auto" else "Reposo"
+        self._info_labels["modo"].configure(text=modo)
+        self._opt_mode.set(modo)
+
+        fsm = getattr(p, "fsm_state", "Idle")
+        color = FSM_COLORS.get(fsm, "#6B7280")
+        self._info_labels["estado"].configure(text=fsm, text_color=color)
+
+        # Uptime (simplificado; se puede obtener de la placa si hay dato)
+        self._info_labels["uptime"].configure(text="—")  # actualizaremos si llega por evento
+
+        # Sensores
+        reading = p.get_latest_reading()
+        for key, (lbl, bar) in self._sensor_widgets.items():
+            val = reading.get(key)
+            if val is not None:
+                lbl.configure(text=f"{float(val):.1f}")
+                if bar and key == "hum_suelo":
+                    bar.set(float(val) / 100)
+            else:
+                lbl.configure(text="—")
+
+        # Umbrales
+        self._entry_min.delete(0, "end")
+        self._entry_min.insert(0, str(p.umbral_min))
+        self._entry_max.delete(0, "end")
+        self._entry_max.insert(0, str(p.umbral_max))
+
+        # Botones según estado FSM
+        if fsm == "Idle":
+            state = "normal"
+        else:
+            state = "disabled"
+        # (reemplazar con atributos de los botones si los guardamos; pero podemos habilitar/deshabilitar así)
+        for btn in self._btn_irrigate, self._btn_stop:
+            btn.configure(state=state)
+
+        # Botón reset fallo
+        if fsm == "Fault":
+            self._btn_reset_fault.grid()
+        else:
+            self._btn_reset_fault.grid_remove()
+
+        # Gráfico: cargar datos históricos (últimos 7 días)
+        self._load_chart_data()
+
+        # Eventos
+        self._load_events()
+
+    def _load_chart_data(self):
+        """Consulta la BD y prepara los datos para el gráfico."""
+        try:
+            rows = self._db.get_readings(self._parcela.get_id(), limit=200, order="DESC")
+        except AttributeError:
+            rows = []
+        if not rows:
+            self._chart.update_data([], [], [], [], self._parcela.umbral_min, self._parcela.umbral_max)
+            return
+
+        timestamps = []
+        hum_s = []
+        hum_a = []
+        temp = []
+        for r in reversed(rows):
+            timestamps.append(r.get("ts") if isinstance(r.get("ts"), datetime) else datetime.fromisoformat(r["ts"]))
+            hum_s.append(r.get("hum_suelo"))
+            hum_a.append(r.get("hum_aire"))
+            temp.append(r.get("temp"))
+        self._chart.update_data(timestamps, hum_s, hum_a, temp,
+                                self._parcela.umbral_min, self._parcela.umbral_max)
+
+    def _load_events(self):
+        self._events_raw = self._db.get_events(self._parcela.get_id(), limit=100) or []
+        self._apply_event_filter()
+
+    def _apply_event_filter(self, *args):
+        filtro = self._event_filter.get()
+        self._event_text.configure(state="normal")
+        self._event_text.delete("1.0", "end")
+        for ev in self._events_raw:
+            ts = ev.get("ts", "")
+            tipo = ev.get("tipo", "").lower()
+            desc = ev.get("descripcion", "")
+            if filtro == "todos" or (filtro == "riego" and "riego" in tipo) or \
+                    (filtro == "modo" and "modo" in tipo) or (
+                    filtro == "error" and ("error" in tipo or "fallo" in tipo)):
+                self._event_text.insert("end", f"[{ts}] {tipo}: {desc}\n")
+        self._event_text.see("end")
+        self._event_text.configure(state="disabled")
+
+    # ---------- Acciones ----------
+    def _on_mode_change(self, value):
+        modo = "auto" if value == "Automático" else "manual"
+        self._send_command({"cmd": "set_mode_auto"} if modo == "auto" else {"cmd": "set_mode_manual"})
+
+    def _apply_thresholds(self):
+        try:
+            min_v = float(self._entry_min.get())
+            max_v = float(self._entry_max.get())
+        except ValueError:
+            return
+        self._parcela.umbral_min = min_v
+        self._parcela.umbral_max = max_v
+        self._db.save_parcela({
+            "id": self._parcela.get_id(),
+            "name": self._parcela.get_name(),
+            "umbral_min": min_v,
+            "umbral_max": max_v,
+            "modo": self._parcela.modo,
+        })
+        self._send_command({"cmd": "set_thresholds", "min": min_v, "max": max_v})
+
+    def _cmd_irrigate(self):
+        self._send_command({"cmd": "irrigate"})
+
+    def _cmd_stop(self):
+        self._send_command({"cmd": "stop"})
+
+    def _cmd_reset_fault(self):
+        self._send_command({"cmd": "reset_fault"})
+
+    def _toggle_sensor(self):
+        # Enviar comandos para habilitar/deshabilitar sensores según checkboxes
+        # (depende del protocolo; aquí solo mostramos la idea)
+        pass
+
+    def _send_command(self, cmd_dict):
+        if self._on_command:
+            self._on_command(cmd_dict, self._parcela.get_id())
+        else:
+            # fallback: publicar directamente si tenemos mqtt_bus
+            if self._mqtt_bus:
+                self._mqtt_bus.publish(f"fot/{self._parcela.get_id()}/control", cmd_dict)
+
+    def _export_events(self):
+        """Exporta el historial filtrado a CSV o JSON."""
+        file_types = [("CSV", "*.csv"), ("JSON", "*.json")]
+        path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=file_types)
+        if not path:
+            return
+        if path.endswith(".json"):
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(self._events_raw, f, default=str, indent=2)
+        else:  # CSV
+            with open(path, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["timestamp", "tipo", "descripcion"])
+                for ev in self._events_raw:
+                    writer.writerow([ev.get("ts"), ev.get("tipo"), ev.get("descripcion")])
+
+### ./ui/theme.py ###
+import customtkinter as ctk
+
+
+def apply_theme() -> None:
+    ctk.set_appearance_mode("dark")
+    ctk.set_default_color_theme("green")
+
+
+# Colores de estado FSM
+FSM_COLORS = {
+    "Idle": "#6B7280",
+    "Monitoring": "#22C55E",
+    "Irrigating": "#3B82F6",
+    "Fault": "#EF4444",
+}
+
+# Colores de conexión
+CONN_COLORS = {
+    "connected": "#22C55E",
+    "disconnected": "#EF4444",
+}
+
+# Paleta general
+COLORS = {
+    "warning": "#F59E0B",
+    "surface": "#2B2B2B",
+    "border": "#3F3F3F",
+    "disconnected": "#EF4444",
+    "connected": "#22C55E",
+    "nav_hover": "#2e2e2e",
+    "nav_active": "#2e2e2e",
+    "accent": "#22C55E",
+    "badge_error": "#EF4444",
+    "fault": "#EF4444",
+    "unknown": "#6B7280",
+}
+
+# Fuentes
+FONT_TITLE = ("Roboto", 16, "bold")
+FONT_NORMAL = ("Roboto", 13)
+FONT_SMALL = ("Roboto", 11)
+FONT_MONO = ("Courier New", 11)
+
+# Constantes de layout
+SIDEBAR_WIDTH = 200
+TOPBAR_HEIGHT = 48
+STATUSBAR_HEIGHT = 28
+
+# Colores adicionales
+BG_SIDEBAR = ("gray90", "#1c1c1c")
+BG_TOPBAR = ("gray95", "#151515")
+BG_STATUSBAR = ("gray90", "#1c1c1c")
+DIVIDER = ("gray75", "#2e2e2e")
+
+# Items de navegación
+NAV_ITEMS = [
+    ("parcelas", "Parcelas", "Panel principal de parcelas"),
+    ("arduinos", "Arduinos", "Gestor de placas Arduino"),
+    ("exportar", "Exportar", "Exportar datos históricos"),
+    ("ayuda", "Ayuda", "Ayuda del sistema"),
+]
+
+NAV_BOTTOM_ITEMS = [
+    ("ajustes", "Ajustes", "Configuración general"),
+]
+
+# Fuente para el logo (debe estar definida)
+FONT_LOGO = ("Roboto", 20, "bold")
+
+### ./ui/widgets/event_log.py ###
+"""
+ui/widgets/event_log.py
+Registro de eventos con filtros: Todos, Solo errores, Solo riegos, Solo cambios de modo.
+Uso:
+    log = EventLog(parent)
+    log.add_line("14:32 — Fallo sensor suelo")
+    log.clear_view()
+"""
+from __future__ import annotations
+
+import customtkinter as ctk
+
+from ui.theme import FONT_SMALL, FONT_MONO
+
+
+class EventLog(ctk.CTkFrame):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, **kwargs)
+
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+
+        # Filtros
+        filter_frame = ctk.CTkFrame(self, fg_color="transparent")
+        filter_frame.grid(row=0, column=0, sticky="ew", padx=6, pady=(6, 0))
+
+        self._filter_var = ctk.StringVar(value="todos")
+        filters = [
+            ("Todos", "todos"),
+            ("Solo errores", "errores"),
+            ("Solo riegos", "riegos"),
+            ("Solo cambios de modo", "modos"),
+        ]
+        for i, (text, value) in enumerate(filters):
+            rb = ctk.CTkRadioButton(
+                filter_frame,
+                text=text,
+                variable=self._filter_var,
+                value=value,
+                font=FONT_SMALL,
+                command=self._apply_filter,
+            )
+            rb.grid(row=0, column=i, padx=(4, 8), pady=4)
+
+        # Botón limpiar vista
+        btn_clear = ctk.CTkButton(
+            filter_frame,
+            text="Limpiar vista",
+            font=FONT_SMALL,
+            width=100,
+            command=self.clear_view,
+        )
+        btn_clear.grid(row=0, column=len(filters), padx=8, pady=4, sticky="e")
+        filter_frame.grid_columnconfigure(len(filters), weight=1)  # empuja a la derecha
+
+        # Cuadro de texto
+        self._text = ctk.CTkTextbox(
+            self,
+            font=FONT_MONO,
+            state="disabled",
+            wrap="word",
+        )
+        self._text.grid(row=1, column=0, sticky="nsew", padx=6, pady=6)
+
+        self._lines = []  # todas las líneas (crudas, como string)
+        self._current_filter = "todos"
+
+    def add_line(self, text: str, tipo: str = "") -> None:
+        """Añadir una línea al registro. tipo puede ser 'error', 'riego', 'modo' para filtrar."""
+        self._lines.append((text, tipo))
+        self._apply_filter()
+
+    def clear_view(self) -> None:
+        """Limpia la vista pero no borra los datos subyacentes."""
+        self._text.configure(state="normal")
+        self._text.delete("1.0", "end")
+        self._text.configure(state="disabled")
+        # No borramos self._lines, solo la vista.
+
+    def _apply_filter(self):
+        filter_val = self._filter_var.get()
+        self._current_filter = filter_val
+
+        self._text.configure(state="normal")
+        self._text.delete("1.0", "end")
+        for line, tipo in self._lines:
+            if filter_val == "todos":
+                show = True
+            elif filter_val == "errores" and tipo == "error":
+                show = True
+            elif filter_val == "riegos" and tipo == "riego":
+                show = True
+            elif filter_val == "modos" and tipo == "modo":
+                show = True
+            else:
+                show = False
+            if show:
+                self._text.insert("end", line + "\n")
+        self._text.see("end")
+        self._text.configure(state="disabled")
+
+### ./ui/widgets/__init__.py ###
+
+### ./ui/widgets/parcela_list.py ###
+"""
+Lista de parcelas con indicadores de estado FSM, conexión y menú contextual.
+Uso:
+    lista = ParcelaList(parent, on_select=callback, on_context_menu=callback)
+    lista.set_parcelas(parcelas)   # lista de objetos Parcela
+"""
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Optional
+
+import customtkinter as ctk
+
+from ui.theme import FSM_COLORS, CONN_COLORS, FONT_NORMAL, FONT_SMALL
+
+CONN_STATES = {
+    "mqtt": "MQTT",
+    "usb": "USB",
+    "bluetooth": "BT",
+    "none": "Sin conexión",
+}
+
+
+class ParcelaList(ctk.CTkScrollableFrame):
+    def __init__(
+            self,
+            master,
+            on_select: Optional[Callable[[str], None]] = None,
+            on_context_menu: Optional[Callable[[str, str], None]] = None,
+            **kwargs
+    ):
+        kwargs.setdefault("label_text", "")
+        super().__init__(master, **kwargs)
+
+        self.grid_columnconfigure(0, weight=1)
+
+        self._on_select = on_select
+        self._on_context_menu = on_context_menu
+        self._selected_id: str | None = None
+        self._parcelas = []
+        self._row_frames: dict[str, ctk.CTkFrame] = {}
+        self._row_labels: dict[str, ctk.CTkLabel] = {}  # ← referencias a lbl_info
+        self._row_dots: dict[str, ctk.CTkLabel] = {}  # ← referencias a dot
+
+    # ------------------------------------------------------------------
+    def set_parcelas(self, parcelas: list) -> None:
+        """Actualizar la lista completa de parcelas."""
+        self._clear_rows()
+        self._parcelas = parcelas
+        for i, parcela in enumerate(parcelas):
+            self._add_row(parcela, i)
+
+    def update_parcela(self, parcela_id: str, **data) -> None:
+        """Actualizar visualmente una fila en concreto."""
+        if parcela_id in self._row_frames:
+            self._refresh_row(parcela_id, **data)
+
+    # ------------------------------------------------------------------
+    def _clear_rows(self) -> None:
+        for widget in self.winfo_children():
+            widget.destroy()
+        self._row_frames.clear()
+        self._row_labels.clear()
+        self._row_dots.clear()
+
+    def _add_row(self, parcela, index: int) -> None:
+        pid = parcela.get_id()
+        name = parcela.get_name()
+        fsm = getattr(parcela, "fsm_state", "Idle")
+        conn = getattr(parcela, "connection", "none")
+
+        frame = ctk.CTkFrame(
+            self,
+            corner_radius=8,
+            border_width=2,
+            border_color="#3F3F3F",
+        )
+        frame.grid(row=index, column=0, sticky="ew", pady=3, padx=2)
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_columnconfigure(1, minsize=40)
+
+        lbl_name = ctk.CTkLabel(
+            frame,
+            text=name,
+            font=FONT_NORMAL,
+            anchor="w",
+        )
+        lbl_name.grid(row=0, column=0, padx=(10, 4), pady=(6, 0), sticky="w")
+
+        info_text = f"{fsm}  •  {CONN_STATES.get(conn, 'Sin conexión')}"
+        lbl_info = ctk.CTkLabel(
+            frame,
+            text=info_text,
+            font=FONT_SMALL,
+            text_color=FSM_COLORS.get(fsm, "#6B7280"),
+            anchor="w",
+        )
+        lbl_info.grid(row=1, column=0, padx=(10, 4), pady=(0, 6), sticky="w")
+
+        dot_color = CONN_COLORS.get("connected") if conn != "none" else CONN_COLORS.get("disconnected")
+        dot = ctk.CTkLabel(
+            frame,
+            text="●",
+            width=16,
+            font=("Roboto", 12),
+            text_color=dot_color,
+        )
+        dot.grid(row=0, column=1, rowspan=2, padx=(0, 10), sticky="e")
+
+        btn_menu = ctk.CTkButton(
+            frame,
+            text="⋮",
+            width=30,
+            height=30,
+            corner_radius=6,
+            fg_color="transparent",
+            hover_color=("gray80", "#2e2e2e"),
+            font=("Roboto", 16),
+            command=lambda p=pid: self._handle_context_menu(p),
+        )
+        btn_menu.grid(row=0, column=2, rowspan=2, padx=(0, 6), sticky="e")
+
+        for w in (frame, lbl_name, lbl_info, dot):
+            w.bind("<Button-1>", lambda e, p=pid: self._handle_select(p))
+
+        self._row_frames[pid] = frame
+        self._row_labels[pid] = lbl_info  # ← guardar referencia
+        self._row_dots[pid] = dot  # ← guardar referencia
+
+    def _refresh_row(self, parcela_id: str, **data) -> None:
+        fsm = data.get("fsm", "Idle")
+        conn = data.get("connection", "none")
+
+        if parcela_id in self._row_labels:
+            info_text = f"{fsm}  •  {CONN_STATES.get(conn, 'Sin conexión')}"
+            self._row_labels[parcela_id].configure(
+                text=info_text,
+                text_color=FSM_COLORS.get(fsm, "#6B7280"),
+            )
+        if parcela_id in self._row_dots:
+            dot_color = (CONN_COLORS.get("connected")
+                         if conn != "none"
+                         else CONN_COLORS.get("disconnected"))
+            self._row_dots[parcela_id].configure(text_color=dot_color)
+
+    # ------------------------------------------------------------------
+    def _handle_select(self, parcela_id: str) -> None:
+        self._selected_id = parcela_id
+        for pid, frame in self._row_frames.items():
+            frame.configure(border_color="#22C55E" if pid == parcela_id else "#3F3F3F")
+        if self._on_select:
+            self._on_select(parcela_id)
+
+    def _handle_context_menu(self, parcela_id: str) -> None:
+        popup = ctk.CTkToplevel(self)
+        popup.wm_overrideredirect(True)
+        popup.attributes("-topmost", True)
+
+        x = self.winfo_pointerx()
+        y = self.winfo_pointery()
+        popup.wm_geometry(f"+{x}+{y}")
+
+        frame = ctk.CTkFrame(popup, corner_radius=8, border_width=1,
+                             border_color="#3F3F3F", fg_color="#2B2B2B")
+        frame.pack(padx=1, pady=1)
+
+        def _close() -> None:
+            popup.destroy()
+
+        def _ver_detalle() -> None:
+            _close()
+            if self._on_context_menu:
+                self._on_context_menu(parcela_id, "detail")
+
+        def _eliminar() -> None:
+            _close()
+            if self._on_context_menu:
+                self._on_context_menu(parcela_id, "delete")
+
+        ctk.CTkButton(
+            frame,
+            text="🔍  Ver detalle",
+            font=("Roboto", 12),
+            anchor="w",
+            width=180,
+            height=34,
+            fg_color="transparent",
+            hover_color="#3F3F3F",
+            text_color=("gray10", "gray90"),
+            corner_radius=6,
+            command=_ver_detalle,
+        ).pack(padx=4, pady=(4, 0), fill="x")
+
+        ctk.CTkFrame(frame, height=1, fg_color="#3F3F3F",
+                     corner_radius=0).pack(fill="x", padx=6, pady=4)
+
+        ctk.CTkButton(
+            frame,
+            text="🗑️  Eliminar parcela",
+            font=("Roboto", 12),
+            anchor="w",
+            width=180,
+            height=34,
+            fg_color="transparent",
+            hover_color="#3F3F3F",
+            text_color="#EF4444",
+            corner_radius=6,
+            command=_eliminar,
+        ).pack(padx=4, pady=(0, 4), fill="x")
+
+        popup.bind("<FocusOut>", lambda e: _close())
+        popup.focus_set()
+
+    @property
+    def selected_id(self) -> str | None:
+        return self._selected_id
+
+### ./ui/widgets/sensor_chart.py ###
+from __future__ import annotations
+
+import tkinter as tk
+from datetime import datetime, timedelta
+from tkinter import filedialog
+
+import customtkinter as ctk
+import matplotlib
+
+matplotlib.use("TkAgg")
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.figure import Figure
+
+from ui.theme import FONT_SMALL
+
+
+class SensorChart(ctk.CTkFrame):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, fg_color="transparent", corner_radius=0)
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+
+        ctrl_frame = ctk.CTkFrame(self, fg_color="transparent")
+        ctrl_frame.grid(row=0, column=0, sticky="ew", padx=6, pady=(6, 0))
+
+        self._range_var = ctk.StringVar(value="1h")
+        ranges = [("1 h", "1h"), ("6 h", "6h"), ("24 h", "24h"), ("7 d", "7d")]
+        for i, (label, val) in enumerate(ranges):
+            ctk.CTkRadioButton(
+                ctrl_frame,
+                text=label,
+                variable=self._range_var,
+                value=val,
+                font=FONT_SMALL,
+                command=self._on_range_changed,
+            ).grid(row=0, column=i, padx=4)
+
+        ctk.CTkButton(
+            ctrl_frame,
+            text="Exportar PNG",
+            font=FONT_SMALL,
+            width=100,
+            command=self._export_png,
+        ).grid(row=0, column=len(ranges), padx=8, sticky="e")
+        ctrl_frame.grid_columnconfigure(len(ranges), weight=1)
+
+        self._canvas_frame = tk.Frame(self, bg="#1c1c1c")
+        self._canvas_frame.grid(row=1, column=0, sticky="nsew", padx=4, pady=4)
+
+        self._figure = Figure(figsize=(6, 3), dpi=100)
+        self._figure.patch.set_facecolor("#1c1c1c")
+        self._ax = self._figure.add_subplot(111)
+        self._ax.set_facecolor("#1c1c1c")
+        self._ax.tick_params(colors="white", labelcolor="white")  # ← estado inicial
+        self._ax.yaxis.label.set_color("white")
+        self._ax.xaxis.label.set_color("white")
+
+        self._mpl_canvas = FigureCanvasTkAgg(self._figure, master=self._canvas_frame)
+        self._mpl_canvas.get_tk_widget().pack(fill="both", expand=True)
+
+        self._timestamps = []
+        self._hum_suelo = []
+        self._hum_aire = []
+        self._temp = []
+        self._umbral_min = None
+        self._umbral_max = None
+
+    def update_data(self, timestamps, hum_suelo, hum_aire, temp,
+                    umbral_min=None, umbral_max=None):
+        self._timestamps = timestamps
+        self._hum_suelo = hum_suelo
+        self._hum_aire = hum_aire
+        self._temp = temp
+        self._umbral_min = umbral_min
+        self._umbral_max = umbral_max
+        self._draw_chart()
+
+    def _on_range_changed(self):
+        self._draw_chart()
+
+    def _draw_chart(self):
+        self._ax.clear()
+        self._ax.set_facecolor("#1c1c1c")
+
+        # Restaurar colores tras clear() — matplotlib los resetea al default
+        self._ax.tick_params(colors="white", labelcolor="white", labelsize=8)
+        self._ax.yaxis.label.set_color("white")
+        self._ax.xaxis.label.set_color("white")
+        for label in self._ax.get_xticklabels() + self._ax.get_yticklabels():
+            label.set_color("white")
+
+        if not self._timestamps:
+            self._ax.text(0.5, 0.5, "Sin datos",
+                          transform=self._ax.transAxes,
+                          ha="center", va="center",
+                          color="white", fontsize=10)
+            self._mpl_canvas.draw()
+            return
+
+        range_str = self._range_var.get()
+        delta = {
+            "1h": timedelta(hours=1),
+            "6h": timedelta(hours=6),
+            "24h": timedelta(days=1),
+            "7d": timedelta(days=7),
+        }[range_str]
+
+        now = datetime.now()
+        mask = [ts >= (now - delta) for ts in self._timestamps]
+        ts = [self._timestamps[i] for i, m in enumerate(mask) if m]
+        hs = [self._hum_suelo[i] for i, m in enumerate(mask) if m]
+        ha = [self._hum_aire[i] for i, m in enumerate(mask) if m]
+        tp = [self._temp[i] for i, m in enumerate(mask) if m]
+
+        if ts:
+            self._ax.plot(ts, hs, label="Hum. suelo (%)", color="#22C55E")
+            self._ax.plot(ts, ha, label="Hum. aire (%)", color="#3B82F6")
+            self._ax.plot(ts, tp, label="Temp. (°C)", color="#EF4444")
+
+        if self._umbral_min is not None and ts:
+            self._ax.axhline(y=self._umbral_min, color="orange",
+                             linestyle="--", label="Umbral mín")
+        if self._umbral_max is not None and ts:
+            self._ax.axhline(y=self._umbral_max, color="red",
+                             linestyle="--", label="Umbral máx")
+
+        for spine in self._ax.spines.values():
+            spine.set_edgecolor("#3F3F3F")
+
+        self._ax.legend(fontsize=8, facecolor="#2B2B2B",
+                        edgecolor="#3F3F3F", labelcolor="white")
+        self._ax.set_xlabel("Tiempo", fontsize=8, color="white")
+        self._ax.grid(True, alpha=0.2, color="#3F3F3F")
+        self._figure.autofmt_xdate()
+
+        # Volver a aplicar color blanco después de autofmt_xdate()
+        # ya que también puede resetear las etiquetas del eje X
+        for label in self._ax.get_xticklabels() + self._ax.get_yticklabels():
+            label.set_color("white")
+
+        self._mpl_canvas.draw()
+
+    def _export_png(self):
+        path = filedialog.asksaveasfilename(
+            defaultextension=".png",
+            filetypes=[("PNG", "*.png")],
+            title="Guardar gráfico como PNG",
+        )
+        if path:
+            self._figure.savefig(path, dpi=150, facecolor="#1c1c1c")
+
+### ./ui/widgets/side_bar.py ###
+"""
+ui/widgets/side_bar.py
+Barra lateral de navegación.
+
+Uso:
+    bar = SideBar(root, on_navigate=lambda section: ...)
+    bar.pack(side="left", fill="y")
+    bar.set_active("parcelas")   # desde fuera si es necesario
+"""
+from __future__ import annotations
+
+import customtkinter as ctk
+
+from ui.theme import (
+    COLORS, BG_SIDEBAR,
+    FONT_NORMAL, NAV_ITEMS, NAV_BOTTOM_ITEMS,
+    SIDEBAR_WIDTH,
+)
+
+
+class SideBar(ctk.CTkFrame):
+    """
+    Barra lateral con botones de navegación.
+
+    Layout:
+        ┌──────────────┐
+        │  [Parcelas]  │  ← activo
+        │  [Arduinos]  │
+        │  [Exportar]  │
+        │  [Ayuda]     │
+        │              │
+        │  [Ajustes]   │  ← fondo
+        └──────────────┘
+
+    Parámetros:
+        on_navigate  — callback(section: str) invocado al pulsar un botón.
+    """
+
+    def __init__(
+            self,
+            master,
+            on_navigate: callable,
+            **kwargs,
+    ) -> None:
+        kwargs.setdefault("width", SIDEBAR_WIDTH)
+        kwargs.setdefault("corner_radius", 0)
+        kwargs.setdefault("fg_color", BG_SIDEBAR)
+        super().__init__(master, **kwargs)
+
+        self.pack_propagate(False)
+        self._on_navigate = on_navigate
+        self._active: str | None = None
+        self._buttons: dict[str, ctk.CTkButton] = {}
+
+        self._build()
+
+    # ------------------------------------------------------------------
+    # Construcción
+    # ------------------------------------------------------------------
+
+    def _build(self) -> None:
+        # ── Cabecera de la barra ────────────────────────────────────
+        header = ctk.CTkFrame(self, fg_color="transparent", height=16)
+        header.pack(fill="x")
+
+        # ── Botones principales ─────────────────────────────────────
+        top_group = ctk.CTkFrame(self, fg_color="transparent")
+        top_group.pack(fill="x", padx=8, pady=(4, 0))
+
+        for section, label, tooltip in NAV_ITEMS:
+            btn = self._make_nav_button(top_group, section, label, tooltip)
+            btn.pack(fill="x", pady=2)
+            self._buttons[section] = btn
+
+        # ── Separador ───────────────────────────────────────────────
+        ctk.CTkFrame(
+            self,
+            height=1,
+            fg_color=("gray75", "#2e2e2e"),
+            corner_radius=0,
+        ).pack(fill="x", padx=16, pady=12)
+
+        # ── Botón de ajustes (fondo) ─────────────────────────────────
+        bottom_group = ctk.CTkFrame(self, fg_color="transparent")
+        bottom_group.pack(side="bottom", fill="x", padx=8, pady=8)
+
+        for section, label, tooltip in NAV_BOTTOM_ITEMS:
+            btn = self._make_nav_button(bottom_group, section, label, tooltip)
+            btn.pack(fill="x", pady=2)
+            self._buttons[section] = btn
+
+    def _make_nav_button(
+            self,
+            parent,
+            section: str,
+            label: str,
+            tooltip: str,
+    ) -> ctk.CTkButton:
+        btn = ctk.CTkButton(
+            parent,
+            text=label,
+            font=FONT_NORMAL,
+            height=40,
+            corner_radius=8,
+            anchor="w",
+            fg_color="transparent",
+            text_color=("gray20", "gray80"),
+            hover_color=("gray80", COLORS["nav_hover"]),
+            command=lambda s=section: self._handle_click(s),
+        )
+        _attach_tooltip(btn, tooltip)
+        return btn
+
+    # ------------------------------------------------------------------
+    # API pública
+    # ------------------------------------------------------------------
+
+    def set_active(self, section: str) -> None:
+        """
+        Resaltar el botón de la sección activa y quitar el resaltado del anterior.
+        Llamar desde MainWindow al cambiar de panel.
+        """
+        if self._active and self._active in self._buttons:
+            self._buttons[self._active].configure(
+                fg_color="transparent",
+                text_color=("gray20", "gray80"),
+                font=FONT_NORMAL,
+            )
+
+        if section in self._buttons:
+            self._buttons[section].configure(
+                fg_color=("gray82", COLORS["nav_active"]),
+                text_color=(COLORS["accent"], COLORS["accent"]),
+                font=("Roboto", 13, "bold"),
+            )
+            self._active = section
+
+    # ------------------------------------------------------------------
+    # Interno
+    # ------------------------------------------------------------------
+
+    def _handle_click(self, section: str) -> None:
+        self.set_active(section)
+        if callable(self._on_navigate):
+            self._on_navigate(section)
+
+
+# ---------------------------------------------------------------------------
+# Tooltip mínimo
+# ---------------------------------------------------------------------------
+
+class _Tooltip:
+    """
+    Tooltip sencillo que aparece al mantener el cursor sobre un widget.
+    No requiere biblioteca externa.
+    """
+
+    DELAY_MS = 600
+
+    def __init__(self, widget, text: str) -> None:
+        self._widget = widget
+        self._text = text
+        self._win = None
+        self._after = None
+
+        widget.bind("<Enter>", self._schedule, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<Button>", self._hide, add="+")
+
+    def _schedule(self, _event=None) -> None:
+        self._after = self._widget.after(self.DELAY_MS, self._show)
+
+    def _show(self, _event=None) -> None:
+        if self._win:
+            return
+        x = self._widget.winfo_rootx() + self._widget.winfo_width() + 4
+        y = self._widget.winfo_rooty() + self._widget.winfo_height() // 2 - 10
+        self._win = ctk.CTkToplevel(self._widget)
+        self._win.wm_overrideredirect(True)
+        self._win.wm_geometry(f"+{x}+{y}")
+        ctk.CTkLabel(
+            self._win,
+            text=self._text,
+            font=("Roboto", 11),
+            fg_color=("gray20", "#2e2e2e"),
+            text_color=("white", "gray90"),
+            corner_radius=4,
+            padx=8,
+            pady=4,
+        ).pack()
+
+    def _hide(self, _event=None) -> None:
+        if self._after:
+            self._widget.after_cancel(self._after)
+            self._after = None
+        if self._win:
+            self._win.destroy()
+            self._win = None
+
+
+def _attach_tooltip(widget, text: str) -> None:
+    _Tooltip(widget, text)
+
+### ./ui/widgets/status_bar.py ###
+"""
+ui/widgets/status_bar.py
+Barra inferior de estado: última sincronización, alertas, broker MQTT y USB.
+
+Uso:
+    bar = StatusBar(root)
+    bar.pack(side="bottom", fill="x")
+    bar.start_clock(root)        # actualiza el reloj de sync cada segundo
+
+    # Desde callbacks:
+    bar.mark_sync()              # llamar al recibir cualquier mensaje MQTT
+    bar.update_mqtt(True)
+    bar.update_alerts(3)
+    bar.update_usb_count(1)
+"""
+from __future__ import annotations
+
+from datetime import datetime
+
+import customtkinter as ctk
+
+from ui.theme import (
+    COLORS, BG_STATUSBAR, DIVIDER,
+    FONT_SMALL,
+    STATUSBAR_HEIGHT,
+)
+
+
+class StatusBar(ctk.CTkFrame):
+    """
+    Franja horizontal en la parte inferior de la ventana.
+
+    Columnas:
+        Izquierda  — última sincronización con el servidor
+        Centro     — estado del broker MQTT
+        Derecha    — alertas activas | placas USB conectadas
+    """
+
+    def __init__(self, master, **kwargs) -> None:
+        kwargs.setdefault("height", STATUSBAR_HEIGHT)
+        kwargs.setdefault("corner_radius", 0)
+        kwargs.setdefault("fg_color", BG_STATUSBAR)
+        super().__init__(master, **kwargs)
+
+        self.pack_propagate(False)
+        self._last_sync: datetime | None = None
+        self._clock_running = False
+
+        self._build()
+
+    # ------------------------------------------------------------------
+    # Construcción
+    # ------------------------------------------------------------------
+
+    def _build(self) -> None:
+        # ── Izquierda: última sincronización ────────────────────────
+        left = ctk.CTkFrame(self, fg_color="transparent")
+        left.pack(side="left", padx=(12, 0))
+
+        self._sync_label = ctk.CTkLabel(
+            left,
+            text="Sin datos del servidor",
+            font=FONT_SMALL,
+            text_color=("gray40", "gray55"),
+        )
+        self._sync_label.pack(side="left")
+
+        _sep(self)
+
+        # ── Centro: broker MQTT ──────────────────────────────────────
+        center = ctk.CTkFrame(self, fg_color="transparent")
+        center.pack(side="left")
+
+        self._broker_dot = ctk.CTkLabel(
+            center,
+            text="●",
+            font=FONT_SMALL,
+            text_color=COLORS["disconnected"],
+            width=10,
+        )
+        self._broker_dot.pack(side="left")
+
+        self._broker_label = ctk.CTkLabel(
+            center,
+            text="Broker MQTT desconectado",
+            font=FONT_SMALL,
+            text_color=("gray40", "gray55"),
+        )
+        self._broker_label.pack(side="left", padx=(3, 0))
+
+        # ── Derecha: alertas + USB ───────────────────────────────────
+        right = ctk.CTkFrame(self, fg_color="transparent")
+        right.pack(side="right", padx=(0, 12))
+
+        self._usb_label = ctk.CTkLabel(
+            right,
+            text="0 USB",
+            font=FONT_SMALL,
+            text_color=("gray40", "gray55"),
+        )
+        self._usb_label.pack(side="right")
+
+        _sep(right)
+
+        self._alerts_dot = ctk.CTkLabel(
+            right,
+            text="●",
+            font=FONT_SMALL,
+            text_color=COLORS["unknown"],
+            width=10,
+        )
+        self._alerts_dot.pack(side="right")
+
+        self._alerts_label = ctk.CTkLabel(
+            right,
+            text="Sin alertas",
+            font=FONT_SMALL,
+            text_color=("gray40", "gray55"),
+        )
+        self._alerts_label.pack(side="right", padx=(0, 3))
+
+    # ------------------------------------------------------------------
+    # API pública
+    # ------------------------------------------------------------------
+
+    def mark_sync(self) -> None:
+        """
+        Registrar el momento de la última sincronización.
+        Llamar desde DataReceiver al recibir cualquier mensaje MQTT.
+        """
+        self._last_sync = datetime.now()
+
+    def start_clock(self, root) -> None:
+        """
+        Iniciar el refresco del label de sincronización cada segundo.
+        Llamar una sola vez desde MainWindow tras construir la ventana.
+        """
+        if not self._clock_running:
+            self._clock_running = True
+            self._tick(root)
+
+    def update_mqtt(self, connected: bool) -> None:
+        """Actualizar indicador de estado del broker."""
+        color = COLORS["connected"] if connected else COLORS["disconnected"]
+        text = "Broker MQTT conectado" if connected else "Broker MQTT desconectado"
+        self._broker_dot.configure(text_color=color)
+        self._broker_label.configure(text=text)
+
+    def update_alerts(self, count: int) -> None:
+        """
+        Actualizar contador de alertas activas.
+        count == 0 → indicador gris "Sin alertas".
+        count > 0  → indicador rojo con el número.
+        """
+        if count == 0:
+            self._alerts_label.configure(text="Sin alertas",
+                                         text_color=("gray40", "gray55"))
+            self._alerts_dot.configure(text_color=COLORS["unknown"])
+        else:
+            plural = "s" if count != 1 else ""
+            self._alerts_label.configure(
+                text=f"{count} alerta{plural} activa{plural}",
+                text_color=COLORS["fault"],
+            )
+            self._alerts_dot.configure(text_color=COLORS["fault"])
+
+    def update_usb_count(self, count: int) -> None:
+        """Actualizar contador de placas USB conectadas."""
+        plural = "s" if count != 1 else ""
+        color = COLORS["connected"] if count > 0 else ("gray40", "gray55")
+        self._usb_label.configure(
+            text=f"{count} USB",
+            text_color=color,
+        )
+
+    # ------------------------------------------------------------------
+    # Interno
+    # ------------------------------------------------------------------
+
+    def _tick(self, root) -> None:
+        """Refrescar el label de sincronización cada segundo."""
+        self._refresh_sync_label()
+        root.after(1_000, lambda: self._tick(root))
+
+    def _refresh_sync_label(self) -> None:
+        if self._last_sync is None:
+            self._sync_label.configure(text="Sin datos del servidor")
+            return
+
+        elapsed = int((datetime.now() - self._last_sync).total_seconds())
+        if elapsed < 5:
+            text = "Sync: ahora mismo"
+        elif elapsed < 60:
+            text = f"Sync: hace {elapsed} s"
+        elif elapsed < 3600:
+            text = f"Sync: hace {elapsed // 60} min"
+        else:
+            text = f"Sync: hace {elapsed // 3600} h"
+
+        # Si llevan más de 2 min sin datos, resaltar en ámbar
+        color = COLORS["warning"] if elapsed > 120 else ("gray40", "gray55")
+        self._sync_label.configure(text=text, text_color=color)
+
+
+# ---------------------------------------------------------------------------
+# Helper local
+# ---------------------------------------------------------------------------
+
+def _sep(parent) -> None:
+    """Separador vertical para la barra de estado."""
+    ctk.CTkFrame(
+        parent,
+        width=1,
+        height=14,
+        fg_color=DIVIDER,
+        corner_radius=0,
+    ).pack(side="left" if parent.winfo_class() != "CTk" else "right",
+           padx=10)
+
+### ./ui/widgets/top_bar.py ###
+"""
+ui/widgets/top_bar.py
+Barra superior fija: logo, indicadores de conexión y campana de notificaciones.
+
+Uso:
+    bar = TopBar(root, on_bell_click=lambda: ...)
+    bar.pack(side="top", fill="x")
+    bar.update_mqtt_status(connected=True)
+    bar.update_boards_count(3)
+    bar.update_notification_count(2)
+"""
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Optional
+
+import customtkinter as ctk
+
+from ui.theme import (
+    COLORS, BG_TOPBAR, DIVIDER,
+    FONT_LOGO, FONT_NORMAL, FONT_SMALL,
+    TOPBAR_HEIGHT,
+)
+
+
+class TopBar(ctk.CTkFrame):
+    """
+    Barra horizontal en la parte superior de la ventana.
+
+    Columnas:
+        Izquierda  — logo "FoT" + subtítulo
+        Derecha    — estado MQTT | placas activas | campana
+    """
+
+    def __init__(
+            self,
+            master,
+            on_bell_click: Optional[Callable[[], None]] = None,
+            **kwargs,
+    ) -> None:
+        kwargs.setdefault("height", TOPBAR_HEIGHT)
+        kwargs.setdefault("corner_radius", 0)
+        kwargs.setdefault("fg_color", BG_TOPBAR)
+        super().__init__(master, **kwargs)
+
+        self.pack_propagate(False)  # respetar el height fijo
+        self._on_bell_click = on_bell_click
+        self._notification_count = 0
+
+        self._build()
+
+    # ------------------------------------------------------------------
+    # Construcción
+    # ------------------------------------------------------------------
+
+    def _build(self) -> None:
+        # ── Bloque izquierdo: logo + subtítulo ──────────────────────
+        left = ctk.CTkFrame(self, fg_color="transparent")
+        left.pack(side="left", padx=(16, 0), pady=0)
+
+        self._logo = ctk.CTkLabel(
+            left,
+            text="FoT",
+            font=FONT_LOGO,
+            text_color=COLORS["accent"],
+        )
+        self._logo.pack(side="left")
+
+        self._subtitle = ctk.CTkLabel(
+            left,
+            text=" — Farm of Things",
+            font=FONT_NORMAL,
+            text_color=("gray40", "gray60"),
+        )
+        self._subtitle.pack(side="left", padx=(2, 0))
+
+        # ── Bloque derecho: indicadores ──────────────────────────────
+        right = ctk.CTkFrame(self, fg_color="transparent")
+        right.pack(side="right", padx=16, pady=0)
+
+        # Campana de notificaciones (con badge)
+        self._bell_frame = ctk.CTkFrame(right, fg_color="transparent")
+        self._bell_frame.pack(side="right", padx=(12, 0))
+
+        self._bell_btn = ctk.CTkButton(
+            self._bell_frame,
+            text="🔔",
+            width=36,
+            height=36,
+            corner_radius=8,
+            fg_color="transparent",
+            hover_color=("gray80", "#2e2e2e"),
+            font=FONT_NORMAL,
+            command=self._handle_bell,
+        )
+        self._bell_btn.pack()
+
+        # Badge de conteo sobre la campana
+        self._badge = ctk.CTkLabel(
+            self._bell_frame,
+            text="",
+            font=("Roboto", 9, "bold"),
+            width=16,
+            height=16,
+            corner_radius=8,
+            fg_color=COLORS["badge_error"],
+            text_color="white",
+        )
+        # Se muestra solo cuando count > 0 (gestionado en update_notification_count)
+
+        # Separador
+        _separator(right)
+
+        # Contador de placas activas
+        self._boards_dot = ctk.CTkLabel(
+            right,
+            text="●",
+            font=FONT_SMALL,
+            text_color=COLORS["unknown"],
+            width=12,
+        )
+        self._boards_dot.pack(side="right")
+
+        self._boards_label = ctk.CTkLabel(
+            right,
+            text="0 placas activas",
+            font=FONT_SMALL,
+            text_color=("gray30", "gray70"),
+        )
+        self._boards_label.pack(side="right", padx=(0, 4))
+
+        # Separador
+        _separator(right)
+
+        # Estado del servidor MQTT
+        self._mqtt_text = ctk.CTkLabel(
+            right,
+            text="Sin conexión al servidor",
+            font=FONT_SMALL,
+            text_color=("gray30", "gray70"),
+        )
+        self._mqtt_text.pack(side="right", padx=(0, 4))
+
+        self._mqtt_dot = ctk.CTkLabel(
+            right,
+            text="●",
+            font=FONT_SMALL,
+            text_color=COLORS["disconnected"],
+            width=12,
+        )
+        self._mqtt_dot.pack(side="right")
+
+    # ------------------------------------------------------------------
+    # API pública
+    # ------------------------------------------------------------------
+
+    def update_mqtt_status(self, connected: bool) -> None:
+        """Actualizar indicador de conexión al broker MQTT."""
+        color = COLORS["connected"] if connected else COLORS["disconnected"]
+        text = "Servidor conectado" if connected else "Sin conexión al servidor"
+        self._mqtt_dot.configure(text_color=color)
+        self._mqtt_text.configure(text=text)
+
+    def update_boards_count(self, count: int) -> None:
+        """Actualizar contador de placas Arduino activas."""
+        plural = "s" if count != 1 else ""
+        self._boards_label.configure(text=f"{count} placa{plural} activa{plural}")
+        color = COLORS["connected"] if count > 0 else COLORS["unknown"]
+        self._boards_dot.configure(text_color=color)
+
+    def update_notification_count(self, count: int) -> None:
+        """
+        Actualizar badge de la campana.
+        count == 0 → ocultar badge.
+        count > 0  → mostrar badge rojo con el número.
+        """
+        self._notification_count = count
+        if count > 0:
+            display = str(count) if count < 100 else "99+"
+            self._badge.configure(text=display)
+            self._badge.place(relx=0.65, rely=0.0, anchor="n")
+            self._bell_btn.configure(text_color=COLORS["badge_error"])
+        else:
+            self._badge.place_forget()
+            self._bell_btn.configure(text_color=("gray40", "gray60"))
+
+    # ------------------------------------------------------------------
+    # Interno
+    # ------------------------------------------------------------------
+
+    def _handle_bell(self) -> None:
+        if callable(self._on_bell_click):
+            self._on_bell_click()
+
+
+# ---------------------------------------------------------------------------
+# Helpers locales
+# ---------------------------------------------------------------------------
+
+def _separator(parent) -> None:
+    """Línea vertical divisoria en la barra superior."""
+    ctk.CTkFrame(
+        parent,
+        width=1,
+        height=24,
+        fg_color=DIVIDER,
+        corner_radius=0,
+    ).pack(side="right", padx=8)
+➜  station git:(main) ✗

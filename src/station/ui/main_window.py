@@ -1,338 +1,387 @@
+# ui/main_window.py
 import logging
-from tkinter import messagebox
+import tkinter as tk
 
 import customtkinter as ctk
 
-from connection.mqtt_client import MQTTEventBus
-from data.database import Database
-from domain.components import Finca, Parcela
-from domain.memento import ConfigManager
-from ui.theme import FSM_COLORS, FONT_TITLE, FONT_NORMAL, FONT_SMALL, FONT_MONO
+from ui.dialogs.assign_arduino_dialog import AssignArduinoDialog
+from ui.dialogs.export_dialog import ExportDialog
+from ui.dialogs.firmware_dialog import FirmwareDialog
+from ui.dialogs.register_dialog import RegisterDialog
+from ui.panels.admin_panel import AdminPanel
+from ui.panels.arduino_panel import ArduinoPanel
+from ui.panels.help_panel import HelpPanel
+from ui.panels.login_panel import LoginPanel
+from ui.panels.main_panel import MainPanel
+from ui.theme import FONT_NORMAL
+from ui.widgets.side_bar import SideBar
+from ui.widgets.status_bar import StatusBar
+from ui.widgets.top_bar import TopBar
 
 logger = logging.getLogger(__name__)
 
 
 class MainWindow:
     """
-    Vista principal — Observer concreto.
-    Recibe eventos MQTT y actualiza la UI de forma segura vía root.after().
+    Vista principal — solo orquestación de UI.
+    Todo el negocio está en controllers inyectados.
+    Ahora gestiona también la visibilidad de paneles de autenticación
+    y administración sin reemplazar los diálogos modales existentes.
     """
 
     def __init__(self,
                  root: ctk.CTk,
-                 finca: Finca,
-                 mqtt_bus: MQTTEventBus,
-                 db: Database,
-                 config_manager: ConfigManager):
+                 finca,
+                 mqtt_bus,
+                 parcela_ctrl,
+                 board_ctrl,
+                 irrig_ctrl,
+                 snap_ctrl,
+                 export_ctrl,
+                 event_ctrl,
+                 auth_ctrl,
+                 user=None):
         self._root = root
         self._finca = finca
         self._mqtt_bus = mqtt_bus
-        self._db = db
-        self._config_manager = config_manager
+
+        # Controllers inyectados
+        self._parcela_ctrl = parcela_ctrl
+        self._board_ctrl = board_ctrl
+        self._irrig_ctrl = irrig_ctrl
+        self._snap_ctrl = snap_ctrl
+        self._export_ctrl = export_ctrl
+        self._event_ctrl = event_ctrl
+        self._auth_ctrl = auth_ctrl
+        self._user = user
 
         self._selected_parcela_id: str | None = None
-        self._parcela_row_frames: dict[str, ctk.CTkFrame] = {}
+        self._current_panel: ctk.CTkFrame | None = None
 
+        # Configuración ventana
         self._root.title("FoT — Estación Base")
         self._root.minsize(960, 640)
+        self._root.grid_rowconfigure(1, weight=1)
+        self._root.grid_columnconfigure(1, weight=1)
 
+        # Layout
         self._build_layout()
-        self._populate_list()
-        self._load_event_log()
 
-    # --------------------------------------------------------------------------
-    # Construcción del layout
-    # --------------------------------------------------------------------------
+        # Si ya hay usuario, cargar datos; si no, mostrar login
+        if self._user is not None:
+            self._setup_authenticated_ui()
+        else:
+            self._show_auth_ui()
+
+        # Reloj de la barra de estado
+        self._status_bar.start_clock(root)
+
+    # ------------------------------------------------------------------
+    # Layout
+    # ------------------------------------------------------------------
     def _build_layout(self) -> None:
-        self._root.grid_columnconfigure(0, weight=1, minsize=240)
-        self._root.grid_columnconfigure(1, weight=3)
-        self._root.grid_rowconfigure(0, weight=3)
-        self._root.grid_rowconfigure(1, weight=1, minsize=150)
+        # Top bar
+        self._top_bar = TopBar(self._root, on_bell_click=None)
+        self._top_bar.grid(row=0, column=0, columnspan=2, sticky="ew")
 
-        self._build_left_panel()
-        self._build_center_panel()
-        self._build_bottom_panel()
+        # Side bar
+        self._side_bar = SideBar(self._root, on_navigate=self._navigate)
+        self._side_bar.grid(row=1, column=0, sticky="ns", rowspan=2)
 
-    # ---- Panel izquierdo ----
-    def _build_left_panel(self) -> None:
-        frame = ctk.CTkFrame(self._root)
-        frame.grid(row=0, column=0, sticky="nsew", padx=(8, 4), pady=8)
-        frame.grid_rowconfigure(1, weight=1)
-        frame.grid_columnconfigure(0, weight=1)
+        # Status bar
+        self._status_bar = StatusBar(self._root)
+        self._status_bar.grid(row=2, column=1, sticky="ew")
 
-        ctk.CTkLabel(frame, text="Parcelas",
-                     font=FONT_TITLE).grid(
-            row=0, column=0, pady=(10, 4), padx=10, sticky="w")
+        # Contenedor de paneles
+        self._content_area = ctk.CTkFrame(self._root)
+        self._content_area.grid(row=1, column=1, sticky="nsew")
+        self._content_area.grid_rowconfigure(0, weight=1)
+        self._content_area.grid_columnconfigure(0, weight=1)
 
-        # Lista scrollable de parcelas
-        self._list_frame = ctk.CTkScrollableFrame(frame, label_text="")
-        self._list_frame.grid(row=1, column=0, sticky="nsew", padx=6, pady=4)
-        self._list_frame.grid_columnconfigure(0, weight=1)
+        # Paneles
+        self._panels: dict[str, ctk.CTkFrame] = {}
 
-        # Botones
-        btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        btn_frame.grid(row=2, column=0, pady=6, padx=6, sticky="ew")
-        btn_frame.grid_columnconfigure((0, 1, 2), weight=1)
+        # Panel de autenticación (embebido)
+        self.login_panel = LoginPanel(
+            self._content_area,
+            auth_controller=self._auth_ctrl,
+            on_login=self._on_login_success,
+        )
+        self._panels["login"] = self.login_panel
 
-        ctk.CTkButton(btn_frame, text="+ Añadir",
-                      font=FONT_SMALL,
-                      command=self._add_parcela).grid(
-            row=0, column=0, padx=2, sticky="ew")
+        # Panel principal — callbacks apuntan a controllers
+        self.main_panel = MainPanel(
+            self._content_area,
+            on_add_parcela=self._on_add_parcela,
+            on_delete_parcela=self._on_delete_parcela,
+            on_select_parcela=self._on_select_parcela,
+            on_apply_thresholds=self._on_apply_thresholds,
+            on_mode_change=self._on_mode_change,
+            on_irrigate=self._on_irrigate,
+            on_stop=self._on_stop,
+        )
+        self._panels["parcelas"] = self.main_panel
 
-        ctk.CTkButton(btn_frame, text="Eliminar",
-                      font=FONT_SMALL,
-                      fg_color="#EF4444", hover_color="#B91C1C",
-                      command=self._delete_parcela).grid(
-            row=0, column=1, padx=2, sticky="ew")
+        # Arduino panel — callbacks apuntan a controllers
+        self.arduino_panel = ArduinoPanel(
+            self._content_area,
+            on_assign=self._on_assign_board,
+            on_unassign=self._on_unassign_board,
+            on_firmware_update=self._on_firmware_update,
+            on_scan_bluetooth=None,
+        )
+        self._panels["arduinos"] = self.arduino_panel
 
-        ctk.CTkButton(btn_frame, text="Snapshot",
-                      font=FONT_SMALL,
-                      fg_color="#6B7280", hover_color="#4B5563",
-                      command=self._save_snapshot_manual).grid(
-            row=0, column=2, padx=2, sticky="ew")
+        # Help panel
+        self.help_panel = HelpPanel(self._content_area)
+        self._panels["ayuda"] = self.help_panel
 
-    # ---- Panel central ----
-    def _build_center_panel(self) -> None:
-        frame = ctk.CTkFrame(self._root)
-        frame.grid(row=0, column=1, sticky="nsew", padx=(4, 8), pady=8)
-        frame.grid_columnconfigure(1, weight=1)
+        # Admin panel (gestión de usuarios)
+        self.admin_panel = AdminPanel(
+            self._content_area,
+            auth_controller=self._auth_ctrl,
+            on_register_user=self._open_register_dialog,
+        )
+        self.admin_panel.set_delete_callback(self._on_admin_delete_user)
+        self._panels["admin"] = self.admin_panel
 
-        row = 0
+    # ------------------------------------------------------------------
+    # Autenticación: mostrar / ocultar
+    # ------------------------------------------------------------------
+    def _show_auth_ui(self) -> None:
+        """Muestra solo el panel de login, oculta la navegación principal."""
+        self._side_bar.grid_remove()
+        self._top_bar.grid_remove()
+        self._status_bar.grid_remove()
+        self._navigate("login")
 
-        # Título de parcela seleccionada
-        self._lbl_parcela_title = ctk.CTkLabel(
-            frame, text="— Ninguna parcela seleccionada —",
-            font=FONT_TITLE)
-        self._lbl_parcela_title.grid(
-            row=row, column=0, columnspan=2,
-            padx=12, pady=(12, 4), sticky="w")
-        row += 1
+    def _setup_authenticated_ui(self) -> None:
+        """Restaura la UI completa tras login exitoso."""
+        self._side_bar.grid()
+        self._top_bar.grid()
+        self._status_bar.grid()
 
-        # Indicador de estado FSM
-        ctk.CTkLabel(frame, text="Estado:",
-                     font=FONT_NORMAL).grid(
-            row=row, column=0, padx=12, pady=4, sticky="w")
+        # Añadir botón de Admin dinámicamente si es admin
+        if self._user.is_admin():
+            self._side_bar.add_nav_button(
+                "admin", "Admin", "Gestión de usuarios"
+            )
 
-        self._lbl_fsm = ctk.CTkLabel(
-            frame, text="—", width=130,
-            font=("Roboto", 12, "bold"),
-            corner_radius=6,
-            fg_color="#6B7280",
-            text_color="white")
-        self._lbl_fsm.grid(row=row, column=1, padx=12, pady=4, sticky="w")
-        row += 1
+        # Cargar datos iniciales
+        self._load_initial_data()
 
-        # Lecturas de sensores
-        sensor_data = [
-            ("Humedad suelo (%):", "_lbl_hum_suelo"),
-            ("Humedad aire (%):", "_lbl_hum_aire"),
-            ("Temperatura (°C):", "_lbl_temp"),
-        ]
-        for label_text, attr in sensor_data:
-            ctk.CTkLabel(frame, text=label_text,
-                         font=FONT_NORMAL).grid(
-                row=row, column=0, padx=12, pady=3, sticky="w")
-            lbl = ctk.CTkLabel(frame, text="—", font=FONT_NORMAL)
-            lbl.grid(row=row, column=1, padx=12, pady=3, sticky="w")
-            setattr(self, attr, lbl)
-            row += 1
+        # Registrar callbacks de controllers para actualizar UI
+        self._parcela_ctrl.set_ui_callback(
+            on_refresh=self._refresh_parcela_list,
+            on_select=self._on_select_parcela
+        )
+        self._event_ctrl.set_ui_callback(self._on_event_logged)
+        self._board_ctrl.set_ui_callback(self._on_board_updated)
 
-        # Separador
-        ctk.CTkFrame(frame, height=2, fg_color="#3F3F3F").grid(
-            row=row, column=0, columnspan=2,
-            sticky="ew", padx=12, pady=8)
-        row += 1
+        # Navegar a panel principal
+        self._current_panel = None
+        self._navigate("parcelas")
+        self._side_bar.set_active("parcelas")
 
-        # Umbrales
-        ctk.CTkLabel(frame, text="Umbral mín (%):",
-                     font=FONT_NORMAL).grid(
-            row=row, column=0, padx=12, pady=3, sticky="w")
-        self._entry_min = ctk.CTkEntry(frame, width=80, font=FONT_NORMAL)
-        self._entry_min.grid(row=row, column=1, padx=12, pady=3, sticky="w")
-        row += 1
+    def _on_login_success(self, user) -> None:
+        """Callback desde LoginPanel cuando el usuario se autentica."""
+        self._user = user
+        logger.info("Login desde panel embebido: %s", user.username)
+        self._setup_authenticated_ui()
 
-        ctk.CTkLabel(frame, text="Umbral máx (%):",
-                     font=FONT_NORMAL).grid(
-            row=row, column=0, padx=12, pady=3, sticky="w")
-        self._entry_max = ctk.CTkEntry(frame, width=80, font=FONT_NORMAL)
-        self._entry_max.grid(row=row, column=1, padx=12, pady=3, sticky="w")
-        row += 1
+    # ------------------------------------------------------------------
+    # Navegación
+    # ------------------------------------------------------------------
+    def _navigate(self, section: str) -> None:
+        if section == "exportar":
+            self._on_export()
+            return
 
-        ctk.CTkButton(frame, text="Aplicar umbrales",
-                      font=FONT_NORMAL,
-                      command=self._apply_thresholds).grid(
-            row=row, column=0, columnspan=2, pady=6)
-        row += 1
+        panel = self._panels.get(section)
+        if panel is None:
+            return
 
-        # Separador
-        ctk.CTkFrame(frame, height=2, fg_color="#3F3F3F").grid(
-            row=row, column=0, columnspan=2,
-            sticky="ew", padx=12, pady=8)
-        row += 1
+        if self._current_panel is not None:
+            self._current_panel.grid_remove()
+        panel.grid(row=0, column=0, sticky="nsew")
+        self._current_panel = panel
+        self._side_bar.set_active(section)
 
-        # Selector de modo
-        ctk.CTkLabel(frame, text="Modo:",
-                     font=FONT_NORMAL).grid(
-            row=row, column=0, padx=12, pady=3, sticky="w")
-        self._option_modo = ctk.CTkOptionMenu(
-            frame,
-            values=["manual", "auto"],
-            font=FONT_NORMAL,
-            command=self._on_mode_change)
-        self._option_modo.set("manual")
-        self._option_modo.grid(row=row, column=1, padx=12, pady=3, sticky="w")
-        row += 1
+    # ------------------------------------------------------------------
+    # Carga inicial
+    # ------------------------------------------------------------------
+    def _load_initial_data(self) -> None:
+        # Parcelas
+        parcelas = self._parcela_ctrl.list_parcelas()
+        self.main_panel.set_parcelas(parcelas)
 
-        # Separador
-        ctk.CTkFrame(frame, height=2, fg_color="#3F3F3F").grid(
-            row=row, column=0, columnspan=2,
-            sticky="ew", padx=12, pady=8)
-        row += 1
+        # Eventos históricos
+        history = self._event_ctrl.load_history(self._finca)
+        for event in history:
+            self.main_panel.add_event(event["text"], event["tipo"])
 
-        # Botones de control manual
-        ctrl_frame = ctk.CTkFrame(frame, fg_color="transparent")
-        ctrl_frame.grid(row=row, column=0, columnspan=2, pady=4)
+        # Boards
+        boards = self._board_ctrl.get_boards()
+        for board in boards:
+            self.arduino_panel.update_board(board)
 
-        self._btn_irrigate = ctk.CTkButton(
-            ctrl_frame, text="▶ Activar riego",
-            font=FONT_NORMAL,
-            fg_color="#3B82F6", hover_color="#1D4ED8",
-            state="disabled",
-            command=self._cmd_irrigate)
-        self._btn_irrigate.pack(side="left", padx=8)
+        # Admin: refrescar lista si aplica
+        if self._user and self._user.is_admin():
+            self._refresh_admin_users()
 
-        self._btn_stop = ctk.CTkButton(
-            ctrl_frame, text="■ Detener riego",
-            font=FONT_NORMAL,
-            fg_color="#EF4444", hover_color="#B91C1C",
-            state="disabled",
-            command=self._cmd_stop)
-        self._btn_stop.pack(side="left", padx=8)
+    # ------------------------------------------------------------------
+    # Admin callbacks
+    # ------------------------------------------------------------------
+    def _open_register_dialog(self) -> None:
+        """Abre el diálogo modal de registro (reutiliza el existente)."""
+        allow_admin = self._auth_ctrl.can_register(self._user)
+        RegisterDialog(
+            self._root,
+            self._auth_ctrl,
+            on_success=lambda username: self._refresh_admin_users(),
+            allow_admin_creation=allow_admin,
+        )
 
-    # ---- Panel inferior — log ----
-    def _build_bottom_panel(self) -> None:
-        frame = ctk.CTkFrame(self._root)
-        frame.grid(row=1, column=0, columnspan=2,
-                   sticky="nsew", padx=8, pady=(0, 8))
-        frame.grid_rowconfigure(0, weight=1)
-        frame.grid_columnconfigure(0, weight=1)
+    def _on_admin_delete_user(self, user_id: int) -> None:
+        ok, error = self._auth_ctrl.delete_user(self._user, user_id)
+        if ok:
+            self._refresh_admin_users()
+        else:
+            from ui.error_handler import ErrorCode, ErrorHandler
+            ErrorHandler.show(ErrorCode.ERR_DB_WRITE, self._root)
 
-        ctk.CTkLabel(frame, text="Registro de eventos",
-                     font=FONT_NORMAL).grid(
-            row=0, column=0, padx=10, pady=(6, 0), sticky="w")
+    def _refresh_admin_users(self) -> None:
+        ok, users = self._auth_ctrl.list_users(self._user)
+        if ok:
+            self.admin_panel.refresh_users(users, self._user.id)
 
-        self._log_text = ctk.CTkTextbox(
-            frame, font=FONT_MONO,
-            state="disabled", wrap="word")
-        self._log_text.grid(row=1, column=0, sticky="nsew", padx=6, pady=6)
+    # ------------------------------------------------------------------
+    # Callbacks de UI → Controller (Parcelas)
+    # ------------------------------------------------------------------
+    def _on_add_parcela(self) -> None:
+        dialog = _InputDialog(self._root, "Nueva parcela", ["ID:", "Nombre:"])
+        if not dialog.result:
+            return
+        pid = dialog.result[0].strip()
+        name = dialog.result[1].strip()
 
-    # --------------------------------------------------------------------------
-    # Lista de parcelas
-    # --------------------------------------------------------------------------
-    def _populate_list(self) -> None:
-        # Limpiar filas anteriores
-        for widget in self._list_frame.winfo_children():
-            widget.destroy()
-        self._parcela_row_frames.clear()
+        ok, error = self._parcela_ctrl.add_parcela(pid, name)
+        if not ok:
+            from ui.error_handler import ErrorCode, ErrorHandler
+            ErrorHandler.show(ErrorCode.ERR_ADD_PARCELA, self._root)
 
-        for i, parcela in enumerate(self._finca.get_children()):
-            self._add_parcela_row(parcela, i)
+    def _on_delete_parcela(self, parcela_id: str | None = None) -> None:
+        target = parcela_id or self._selected_parcela_id
+        if not target:
+            from ui.error_handler import ErrorCode, ErrorHandler
+            ErrorHandler.show(ErrorCode.ERR_DELETE_PARCELA, self._root)
+            return
 
-    def _add_parcela_row(self, parcela: Parcela, index: int) -> None:
-        pid = parcela.get_id()
-        fsm = getattr(parcela, "fsm_state", "Idle")
-        color = FSM_COLORS.get(fsm, "#6B7280")
+        from tkinter.messagebox import askyesno
+        confirm = askyesno(
+            "Confirmar eliminación",
+            f"¿Eliminar la parcela '{target}'?\nEsta acción no se puede deshacer."
+        )
+        if not confirm:
+            return
 
-        row_frame = ctk.CTkFrame(
-            self._list_frame,
-            corner_radius=6,
-            border_width=2,
-            border_color="#3F3F3F")
-        row_frame.grid(row=index, column=0, sticky="ew", pady=3, padx=2)
-        row_frame.grid_columnconfigure(0, weight=1)
+        ok, error = self._parcela_ctrl.delete_parcela(target)
+        if not ok:
+            from ui.error_handler import ErrorCode, ErrorHandler
+            if "no encontrada" in error:
+                ErrorHandler.show(ErrorCode.ERR_DELETE_PARCELA, self._root)
+            else:
+                ErrorHandler.show(ErrorCode.ERR_DB_WRITE, self._root)
+            return
 
-        # Nombre
-        name_lbl = ctk.CTkLabel(
-            row_frame,
-            text=parcela.get_name(),
-            font=FONT_NORMAL,
-            anchor="w")
-        name_lbl.grid(row=0, column=0, padx=10, pady=(6, 2), sticky="w")
+        if self._selected_parcela_id == target:
+            self._selected_parcela_id = None
+            self.main_panel.lbl_title.configure(
+                text="— Ninguna parcela seleccionada —")
 
-        # Estado + ID
-        info_lbl = ctk.CTkLabel(
-            row_frame,
-            text=f"{fsm}  •  {pid}",
-            font=FONT_SMALL,
-            text_color=color,
-            anchor="w")
-        info_lbl.grid(row=1, column=0, padx=10, pady=(0, 6), sticky="w")
-
-        # Clic en la fila
-        for widget in (row_frame, name_lbl, info_lbl):
-            widget.bind("<Button-1>",
-                        lambda e, p=pid: self._on_parcela_click(p))
-
-        self._parcela_row_frames[pid] = row_frame
-
-    def _on_parcela_click(self, parcela_id: str) -> None:
-        # Quitar selección visual anterior
-        if self._selected_parcela_id in self._parcela_row_frames:
-            self._parcela_row_frames[self._selected_parcela_id].configure(
-                border_color="#3F3F3F")
-
+    def _on_select_parcela(self, parcela_id: str | None) -> None:
         self._selected_parcela_id = parcela_id
-
-        # Marcar fila seleccionada
-        if parcela_id in self._parcela_row_frames:
-            self._parcela_row_frames[parcela_id].configure(
-                border_color="#22C55E")
-
-        parcela = self._finca.get_parcela(parcela_id)
+        parcela = self._parcela_ctrl.select_parcela(parcela_id)
         if parcela:
-            self._refresh_center_panel(parcela)
+            self.main_panel.update_detail(parcela)
+        else:
+            self.main_panel.lbl_title.configure(
+                text="— Ninguna parcela seleccionada —")
 
-    # --------------------------------------------------------------------------
-    # Panel central — refresco
-    # --------------------------------------------------------------------------
-    def _refresh_center_panel(self, parcela: Parcela) -> None:
-        self._lbl_parcela_title.configure(text=parcela.get_name())
+    def _on_apply_thresholds(self, min_str: str, max_str: str) -> None:
+        ok, error = self._parcela_ctrl.apply_thresholds(
+            self._selected_parcela_id, min_str, max_str
+        )
+        if not ok:
+            from ui.error_handler import ErrorCode, ErrorHandler
+            if "Umbrales inválidos" in error or "números" in error:
+                ErrorHandler.show(ErrorCode.ERR_THRESHOLDS, self._root)
+            else:
+                ErrorHandler.show(ErrorCode.ERR_DB_WRITE, self._root)
 
-        # Umbrales
-        self._entry_min.delete(0, "end")
-        self._entry_min.insert(0, str(parcela.umbral_min))
-        self._entry_max.delete(0, "end")
-        self._entry_max.insert(0, str(parcela.umbral_max))
+    def _on_mode_change(self, value: str) -> None:
+        ok, error = self._parcela_ctrl.change_mode(self._selected_parcela_id, value)
 
-        # Modo
-        self._option_modo.set(parcela.modo)
+    def _on_irrigate(self) -> None:
+        self._irrig_ctrl.irrigate(self._selected_parcela_id)
 
-        # Estado FSM
-        fsm = getattr(parcela, "fsm_state", "Idle")
-        self._update_fsm_indicator(fsm)
+    def _on_stop(self) -> None:
+        self._irrig_ctrl.stop(self._selected_parcela_id)
 
-        # Lecturas
-        reading = parcela.get_latest_reading()
-        self._lbl_hum_suelo.configure(text=_fmt(reading.get("hum_suelo")))
-        self._lbl_hum_aire.configure(text=_fmt(reading.get("hum_aire")))
-        self._lbl_temp.configure(text=_fmt(reading.get("temp")))
+    # ------------------------------------------------------------------
+    # Callbacks de UI → Controller (Arduino)
+    # ------------------------------------------------------------------
+    def _on_assign_board(self, board_id: str) -> None:
+        parcelas = self._parcela_ctrl.list_parcelas()
+        dialog_data = [{"id": p.get_id(), "name": p.get_name()} for p in parcelas]
+        AssignArduinoDialog(
+            self._root,
+            board_id,
+            dialog_data,
+            on_confirm=self._board_ctrl.assign_board
+        )
 
-        # Botones manuales
-        self._update_control_buttons(fsm)
+    def _on_unassign_board(self, board_id: str) -> None:
+        self._board_ctrl.unassign_board(board_id)
 
-    def _update_fsm_indicator(self, fsm_state: str) -> None:
-        color = FSM_COLORS.get(fsm_state, "#6B7280")
-        self._lbl_fsm.configure(text=fsm_state, fg_color=color)
+    def _on_firmware_update(self, board_id: str) -> None:
+        info = self._board_ctrl.get_firmware_info(board_id)
+        if not info:
+            return
+        FirmwareDialog(
+            self._root,
+            board_id=info["board_id"],
+            port=info["port"],
+            current_version=info["current_version"],
+        )
 
-    def _update_control_buttons(self, fsm_state: str) -> None:
-        state = "normal" if fsm_state == "Idle" else "disabled"
-        self._btn_irrigate.configure(state=state)
-        self._btn_stop.configure(state=state)
+    # ------------------------------------------------------------------
+    # Exportar
+    # ------------------------------------------------------------------
+    def _on_export(self) -> None:
+        parcelas = self._parcela_ctrl.list_parcelas()
+        dialog_data = [{"id": p.get_id(), "name": p.get_name()} for p in parcelas]
+        from ui.error_handler import ErrorHandler
+        ExportDialog(self._root, dialog_data, self._export_ctrl, ErrorHandler())
 
-    # --------------------------------------------------------------------------
-    # Observer — entrada desde hilo MQTT
-    # --------------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Callbacks de Controller → UI (repintado)
+    # ------------------------------------------------------------------
+    def _refresh_parcela_list(self) -> None:
+        parcelas = self._parcela_ctrl.list_parcelas()
+        self.main_panel.set_parcelas(parcelas)
+
+    def _on_event_logged(self, text: str, tipo: str) -> None:
+        self._root.after(0, lambda: self.main_panel.add_event(text, tipo))
+
+    def _on_board_updated(self, board) -> None:
+        self._root.after(0, lambda: self.arduino_panel.update_board(board))
+
+    # ------------------------------------------------------------------
+    # Observer MQTT
+    # ------------------------------------------------------------------
     def on_event(self, topic: str, data: dict) -> None:
+        """Recibe eventos del bus MQTT y repinta la UI de forma segura."""
         self._root.after(0, self._update_ui, topic, data)
 
     def _update_ui(self, topic: str, data: dict) -> None:
@@ -346,215 +395,65 @@ class MainWindow:
             return
 
         if topic.endswith("/sensores"):
-            reading = parcela.get_latest_reading()
             if parcela_id == self._selected_parcela_id:
-                self._lbl_hum_suelo.configure(
-                    text=_fmt(reading.get("hum_suelo")))
-                self._lbl_hum_aire.configure(
-                    text=_fmt(reading.get("hum_aire")))
-                self._lbl_temp.configure(
-                    text=_fmt(reading.get("temp")))
+                self.main_panel.update_detail(parcela)
 
         elif topic.endswith("/estado"):
-            fsm_state = data.get("state", "Idle")
-            # Actualizar fila en la lista
-            self._populate_list()
+            self._refresh_parcela_list()
             if parcela_id == self._selected_parcela_id:
-                self._update_fsm_indicator(fsm_state)
-                self._update_control_buttons(fsm_state)
-            if fsm_state == "Fault":
-                self._append_log(f"[FALLO] {parcela_id}: {data}")
+                self.main_panel.update_detail(parcela)
+            if data.get("state") == "Fault":
+                self._event_ctrl.append(
+                    parcela_id,
+                    f"[FALLO] {parcela_id}: {data}",
+                    "error"
+                )
 
-    # --------------------------------------------------------------------------
-    # Acciones
-    # --------------------------------------------------------------------------
-    def _apply_thresholds(self) -> None:
-        if not self._selected_parcela_id:
-            return
-        parcela = self._finca.get_parcela(self._selected_parcela_id)
-        if not parcela:
-            return
-        try:
-            min_val = float(self._entry_min.get())
-            max_val = float(self._entry_max.get())
-        except ValueError:
-            _show_error("Los umbrales deben ser números entre 0 y 100.")
-            return
-        if not (0 <= min_val < max_val <= 100):
-            _show_error("El umbral mínimo debe ser menor que el máximo\n"
-                        "y ambos entre 0 y 100.")
-            return
-
-        self._config_manager.save_snapshot(
-            self._finca,
-            f"Antes de cambiar umbrales en {self._selected_parcela_id}",
-            self._db)
-
-        parcela.umbral_min = min_val
-        parcela.umbral_max = max_val
-
-        self._db.save_parcela({
-            "id": parcela.get_id(),
-            "name": parcela.get_name(),
-            "umbral_min": min_val,
-            "umbral_max": max_val,
-            "modo": parcela.modo,
-        })
-
-        self._mqtt_bus.publish(
-            f"fot/{self._selected_parcela_id}/control",
-            {"cmd": "set_thresholds", "min": min_val, "max": max_val})
-
-        self._append_log(
-            f"Umbrales actualizados en {self._selected_parcela_id}: "
-            f"mín={min_val}% máx={max_val}%")
-
-    def _on_mode_change(self, value: str) -> None:
-        if not self._selected_parcela_id:
-            return
-        cmd = "set_mode_auto" if value == "auto" else "set_mode_manual"
-        self._mqtt_bus.publish(
-            f"fot/{self._selected_parcela_id}/control",
-            {"cmd": cmd})
-        self._append_log(
-            f"Modo cambiado a '{value}' en {self._selected_parcela_id}")
-
-    def _cmd_irrigate(self) -> None:
-        if self._selected_parcela_id:
-            self._mqtt_bus.publish(
-                f"fot/{self._selected_parcela_id}/control",
-                {"cmd": "irrigate"})
-            self._append_log(
-                f"Riego activado en {self._selected_parcela_id}")
-
-    def _cmd_stop(self) -> None:
-        if self._selected_parcela_id:
-            self._mqtt_bus.publish(
-                f"fot/{self._selected_parcela_id}/control",
-                {"cmd": "stop"})
-            self._append_log(
-                f"Riego detenido en {self._selected_parcela_id}")
-
-    def _add_parcela(self) -> None:
-        dialog = _InputDialog(self._root, "Nueva parcela",
-                              ["ID:", "Nombre:"])
-        if not dialog.result:
-            return
-        pid = dialog.result[0].strip()
-        name = dialog.result[1].strip()
-
-        if not pid or not name:
-            _show_error("El ID y el nombre son obligatorios.")
-            return
-        if self._finca.get_parcela(pid):
-            _show_error(f"Ya existe una parcela con el ID '{pid}'.")
-            return
-
-        self._config_manager.save_snapshot(
-            self._finca, f"Antes de añadir parcela {pid}", self._db)
-
-        parcela = Parcela(pid, name)
-        self._finca.add_parcela(parcela)
-        self._db.save_parcela({
-            "id": pid, "name": name,
-            "umbral_min": 30.0, "umbral_max": 70.0, "modo": "manual"})
-
-        self._populate_list()
-        self._append_log(f"Parcela '{name}' ({pid}) añadida.")
-
-    def _delete_parcela(self) -> None:
-        if not self._selected_parcela_id:
-            _show_error("Selecciona una parcela antes de eliminar.")
-            return
-
-        confirm = messagebox.askyesno(
-            "Confirmar eliminación",
-            f"¿Eliminar la parcela '{self._selected_parcela_id}'?\n"
-            "Esta acción no se puede deshacer.")
-        if not confirm:
-            return
-
-        self._config_manager.save_snapshot(
-            self._finca,
-            f"Antes de eliminar parcela {self._selected_parcela_id}",
-            self._db)
-
-        self._db.delete_parcela(self._selected_parcela_id)
-        self._finca.remove_parcela(self._selected_parcela_id)
-        self._append_log(
-            f"Parcela '{self._selected_parcela_id}' eliminada.")
-        self._selected_parcela_id = None
-        self._lbl_parcela_title.configure(
-            text="— Ninguna parcela seleccionada —")
-        self._populate_list()
-
-    def _save_snapshot_manual(self) -> None:
-        self._config_manager.save_snapshot(
-            self._finca, "Instantánea manual", self._db)
-        self._append_log("Instantánea de configuración guardada.")
-
-    # --------------------------------------------------------------------------
-    # Log de eventos
-    # --------------------------------------------------------------------------
-    def _load_event_log(self) -> None:
-        for parcela in self._finca.get_children():
-            for e in reversed(self._db.get_events(parcela.get_id(), limit=20)):
-                self._append_log(
-                    f"[{e.get('ts', '')}] {e.get('tipo', '')} — "
-                    f"{e.get('descripcion', '')}")
-
-    def _append_log(self, text: str) -> None:
-        self._log_text.configure(state="normal")
-        self._log_text.insert("end", text + "\n")
-        self._log_text.see("end")
-        self._log_text.configure(state="disabled")
+    # ------------------------------------------------------------------
+    # Cierre limpio
+    # ------------------------------------------------------------------
+    def cleanup(self) -> None:
+        self._event_ctrl.cleanup()
+        self._board_ctrl.cleanup()
 
 
 # --------------------------------------------------------------------------
-# Diálogo de entrada
+# Diálogo de entrada genérico
 # --------------------------------------------------------------------------
 class _InputDialog(ctk.CTkToplevel):
-
     def __init__(self, parent, title: str, fields: list[str]):
         super().__init__(parent)
         self.title(title)
         self.resizable(False, False)
-        self.grab_set()
-        self.result = None
 
+        self.result = None
         self._entries = []
+
         for i, label in enumerate(fields):
-            ctk.CTkLabel(self, text=label,
-                         font=FONT_NORMAL).grid(
+            ctk.CTkLabel(self, text=label, font=FONT_NORMAL).grid(
                 row=i, column=0, padx=14, pady=6, sticky="e")
             entry = ctk.CTkEntry(self, width=200, font=FONT_NORMAL)
             entry.grid(row=i, column=1, padx=14, pady=6)
             self._entries.append(entry)
 
-        ctk.CTkButton(self, text="Aceptar",
-                      font=FONT_NORMAL,
-                      command=self._accept).grid(
-            row=len(fields), column=0, columnspan=2, pady=12)
+        ctk.CTkButton(
+            self, text="Aceptar",
+            font=FONT_NORMAL,
+            command=self._accept,
+        ).grid(row=len(fields), column=0, columnspan=2, pady=12)
 
         self._entries[0].focus()
+
+        self.update()
+        self.after(10, lambda: self._set_grab())
         self.wait_window()
+
+    def _set_grab(self) -> None:
+        try:
+            self.grab_set()
+        except tk.TclError:
+            pass
 
     def _accept(self) -> None:
         self.result = [e.get() for e in self._entries]
         self.destroy()
-
-
-# --------------------------------------------------------------------------
-# Helpers
-# --------------------------------------------------------------------------
-def _fmt(value) -> str:
-    if value is None:
-        return "—"
-    try:
-        return f"{float(value):.1f}"
-    except (TypeError, ValueError):
-        return "—"
-
-
-def _show_error(msg: str) -> None:
-    messagebox.showerror("Error", msg)

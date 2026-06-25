@@ -20,10 +20,10 @@
 #define RELAY_PIN   5
 #endif
 #ifndef RELAY_ON
-#define RELAY_ON    HIGH
+#define RELAY_ON    LOW
 #endif
 #ifndef RELAY_OFF
-#define RELAY_OFF   LOW
+#define RELAY_OFF   HIGH
 #endif
 
 class StateMachine {
