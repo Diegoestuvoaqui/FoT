@@ -22,7 +22,7 @@ class LoginDialog(ctk.CTkToplevel):
         """
         super().__init__(parent)
         self.title("FoT — Iniciar sesión")
-        self.geometry("400x480")
+        self.geometry("800x600")
         self.resizable(False, False)
 
         self._auth_ctrl = auth_controller

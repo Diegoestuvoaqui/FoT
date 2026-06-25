@@ -23,7 +23,7 @@ class RegisterDialog(ctk.CTkToplevel):
         """
         super().__init__(parent)
         self.title("FoT — Crear cuenta")
-        self.geometry("400x520")
+        self.geometry("800x600")
         self.resizable(False, False)
 
         self._auth_ctrl = auth_controller

@@ -22,55 +22,10 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="5740451e-bc35-4ef1-9cd4-8c579fca7d45" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/deepseek.txt" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/controller/auth_controller.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/domain/boards.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/domain/user.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/logic/device_scanner.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/logic/exporter.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/logic/firmware_uploader.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/logic/serial_bridge.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/service/auth_service.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/ui/dialogs/login_dialog.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/ui/dialogs/register_dialog.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/station/ui/panels/admin_panel.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/platformio.ini" beforeDir="false" afterPath="$PROJECT_DIR$/platformio.ini" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pyproject.toml" beforeDir="false" afterPath="$PROJECT_DIR$/pyproject.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/firmware/abstractSensors/DHT22Adapter.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/abstractSensors/DHT11Adapter.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/firmware/abstractSensors/DHT22Adapter.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/abstractSensors/DHT11Adapter.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/firmware/abstractSensors/SensorFactory.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/abstractSensors/SensorFactory.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/firmware/abstractSensors/SensorType.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/abstractSensors/SensorType.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateMachine.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/stateMachine/StateMachine.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateMachine.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/stateMachine/StateMachine.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/main.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/bootstrap.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/bootstrap.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/connection/mqtt_client.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/connection/mqtt_client.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/data/database.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/data/database.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/data/fot.db" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/data/fot.db" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/domain/components.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/domain/components.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/domain/memento.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/domain/memento.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/station/fot.log" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/fot.log" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/logic/data_receiver.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/logic/data_receiver.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/main.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/ui/dialogs/assign_arduino_dialog.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/dialogs/assign_arduino_dialog.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/ui/dialogs/export_dialog.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/dialogs/export_dialog.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/ui/dialogs/firmware_dialog.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/dialogs/firmware_dialog.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/ui/error_handler.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/error_handler.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/ui/main_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/main_window.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/ui/panels/arduino_panel.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/panels/arduino_panel.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/ui/panels/help_panel.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/panels/help_panel.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/ui/panels/login_panel.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/panels/login_panel.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/ui/panels/main_panel.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/panels/main_panel.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/ui/panels/parcela_detail_panel.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/panels/parcela_detail_panel.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/ui/theme.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/theme.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/ui/widgets/event_log.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/widgets/event_log.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/ui/widgets/parcela_list.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/widgets/parcela_list.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/ui/widgets/sensor_chart.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/widgets/sensor_chart.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/ui/widgets/side_bar.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/widgets/side_bar.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/ui/widgets/status_bar.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/widgets/status_bar.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/station/ui/widgets/top_bar.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/widgets/top_bar.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/uv.lock" beforeDir="false" afterPath="$PROJECT_DIR$/uv.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/dialogs/login_dialog.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/dialogs/login_dialog.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/dialogs/register_dialog.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/dialogs/register_dialog.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
