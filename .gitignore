@@ -18,3 +18,6 @@ pyproject.toml
 uv.lock
 deepseek.txt
 test_output.log
+*.toml
+*.toml
+platformio.includes
