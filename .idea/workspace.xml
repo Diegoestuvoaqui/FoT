@@ -22,8 +22,49 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="5740451e-bc35-4ef1-9cd4-8c579fca7d45" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/FoT.iml" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/deepseek.txt" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/README" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/include/unity_config.h" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/lib/README" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/service/estacion_base.service" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/abstractSensors/DHT11Adapter.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/abstractSensors/DHT11Adapter.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/abstractSensors/DHT11Adapter.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/abstractSensors/DHT11Adapter.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/abstractSensors/ISensor.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/firmware/abstractSensors/ISensor.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/abstractSensors/SensorFactory.cpp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/abstractSensors/SensorFactory.h" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/abstractSensors/SensorType.h" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/abstractSensors/SoilMoistureAdapter.cpp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/abstractSensors/SoilMoistureAdapter.h" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/connection/MQTTClient.cpp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/connection/MQTTClient.h" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/persistence/EEPROMConfig.cpp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/persistence/EEPROMConfig.h" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/IState.h" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateFault.cpp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateFault.h" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateIdle.cpp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateIdle.h" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateIrrigating.cpp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateIrrigating.h" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateMachine.cpp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateMachine.h" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateMonitoring.cpp" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/firmware/stateMachine/StateMonitoring.h" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/main.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/main.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/controller/board_controller.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/controller/board_controller.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/controller/irrigation_controller.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/fot.log" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/fot.log" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/logic/data_receiver.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/logic/data_receiver.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/logic/serial_bridge.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/logic/serial_bridge.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/main.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/main.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/service/board_service.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/service/board_service.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/service/irrigation_service.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/main_window.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/main_window.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/panels/arduino_panel.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/panels/arduino_panel.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/panels/main_panel.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/station/ui/panels/main_panel.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/station/ui/panels/parcela_detail_panel.py" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -148,7 +189,7 @@
       </method>
     </configuration>
     <configuration name="FoT" type="PythonConfigurationType" factoryName="Python">
-      <module name="FoT" />
+      <module name="fot" />
       <option name="ENV_FILES" value="" />
       <option name="INTERPRETER_OPTIONS" value="" />
       <option name="PARENT_ENVS" value="true" />

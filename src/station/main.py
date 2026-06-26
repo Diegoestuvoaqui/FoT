@@ -1,3 +1,4 @@
+# src/station/main.py
 import logging
 import signal
 import sys
@@ -13,10 +14,8 @@ from bootstrap import bootstrap
 from connection.mqtt_client import MQTTEventBus
 from controller.auth_controller import AuthController
 from controller.board_controller import BoardController
-# Controladores
 from controller.event_controller import EventController
 from controller.export_controller import ExportController
-from controller.irrigation_controller import IrrigationController
 from controller.parcela_controller import ParcelaController
 from controller.snapshot_controller import SnapshotController
 from data.database import Database
@@ -24,16 +23,14 @@ from domain.components import Finca, Parcela
 from domain.memento import ConfigManager
 from domain.user import User
 from logic.data_receiver import DataReceiver
+from logic.sensor_manager import SensorManager
 from service.auth_service import AuthService
 from service.board_service import BoardService
-# Servicios
 from service.event_service import EventService
 from service.export_service import ExportService
-from service.irrigation_service import IrrigationService
 from service.parcela_service import ParcelaService
 from service.snapshot_service import SnapshotService
 from ui.dialogs.login_dialog import LoginDialog
-# UI
 from ui.main_window import MainWindow
 from ui.theme import apply_theme
 
@@ -95,7 +92,7 @@ def show_login(root: ctk.CTk, auth_ctrl: AuthController) -> User | None:
     Muestra el diálogo de login.
     Retorna User autenticado o None si cancela.
     """
-    user = [None]  # mutable para capturar desde callback
+    user = [None]
 
     def on_login(u: User):
         user[0] = u
@@ -104,7 +101,7 @@ def show_login(root: ctk.CTk, auth_ctrl: AuthController) -> User | None:
         root,
         auth_ctrl._service,
         on_login=on_login,
-        on_register=None,  # ← NO hay registro desde login inicial
+        on_register=None,
     )
 
     return user[0]
@@ -125,15 +122,22 @@ def main() -> None:
     auth_service = AuthService(db)
     auth_service.ensure_admin_exists()
 
+    # MQTT para la estación (broker local)
     mqtt_bus = MQTTEventBus(BROKER_IP, BROKER_PORT)
-    config_manager = ConfigManager()
-    data_receiver = DataReceiver(db)  # ← SIN None, finca se asigna después
 
     try:
         mqtt_bus.start()
-        logger.info("MQTT conectado a %s:%s", BROKER_IP, BROKER_PORT)
+        logger.info("MQTT broker local en %s:%s", BROKER_IP, BROKER_PORT)
     except Exception as e:
-        logger.error("No se pudo conectar al broker MQTT: %s", e)
+        logger.error("No se pudo iniciar broker MQTT: %s", e)
+
+    # ------------------------------------------------------------------
+    # SensorManager: gestiona conexiones USB/Bluetooth a placas
+    # ------------------------------------------------------------------
+    sensor_manager = SensorManager()
+
+    # DataReceiver: recibe lecturas y las persiste
+    data_receiver = DataReceiver(db)
 
     # ------------------------------------------------------------------
     # UI — Login primero
@@ -143,7 +147,6 @@ def main() -> None:
 
     auth_ctrl = AuthController(auth_service)
 
-    # Mostrar login modal
     current_user = show_login(root, auth_ctrl)
     if current_user is None:
         logger.info("Login cancelado, saliendo")
@@ -156,21 +159,41 @@ def main() -> None:
     # Cargar datos del usuario
     # ------------------------------------------------------------------
     finca = build_finca_from_db(db, current_user.id)
-    data_receiver.set_finca(finca)  # ← NUEVO: asignar finca aquí
+    data_receiver.set_finca(finca)
     logger.info("Finca cargada: %d parcelas para usuario %s",
                 len(finca.get_children()), current_user.username)
-    # DataReceiver necesita la finca
-    # TODO: refactorizar DataReceiver para que reciba finca dinámicamente
-    # o reconstruirlo aquí
 
     # ------------------------------------------------------------------
-    # Capa de Servicios (con usuario)
+    # Conectar callbacks del SensorManager al DataReceiver
     # ------------------------------------------------------------------
+    def on_sensor_reading(parcela_id: str, data: dict):
+        """Callback cuando llega lectura de sensor."""
+        data_receiver.on_reading(parcela_id, data)
+
+    def on_sensor_identify(parcela_id: str, data: dict):
+        """Callback cuando placa se identifica."""
+        data_receiver.on_identify(parcela_id, data)
+        # Notificar al BoardService para actualizar UI
+        board_service.on_sensor_identify(parcela_id, data)
+
+    sensor_manager._on_reading = on_sensor_reading
+    sensor_manager._on_identify = on_sensor_identify
+
+    # ------------------------------------------------------------------
+    # Capa de Servicios
+    # ------------------------------------------------------------------
+    config_manager = ConfigManager()
     event_service = EventService(db)
-    board_service = BoardService(mqtt_bus, data_receiver)
-    irrigation_service = IrrigationService(board_service, mqtt_bus, event_service)
+
+    # BoardService integrado con SensorManager
+    board_service = BoardService(
+        db=db,
+        sensor_manager=sensor_manager,
+    )
+    board_service.load_from_db()
+
     parcela_service = ParcelaService(
-        finca, db, config_manager, irrigation_service, current_user.id
+        finca, db, config_manager, None, current_user.id  # irrigation_service=None
     )
     snapshot_service = SnapshotService(
         finca, db, config_manager, event_service, current_user.id
@@ -182,7 +205,6 @@ def main() -> None:
     # ------------------------------------------------------------------
     event_controller = EventController(event_service)
     board_controller = BoardController(board_service)
-    irrigation_controller = IrrigationController(irrigation_service)
     parcela_controller = ParcelaController(parcela_service)
     snapshot_controller = SnapshotController(snapshot_service)
     export_controller = ExportController(export_service)
@@ -196,27 +218,25 @@ def main() -> None:
         mqtt_bus=mqtt_bus,
         parcela_ctrl=parcela_controller,
         board_ctrl=board_controller,
-        irrig_ctrl=irrigation_controller,
         snap_ctrl=snapshot_controller,
         export_ctrl=export_controller,
         event_ctrl=event_controller,
         user=current_user,
         auth_ctrl=auth_ctrl,
+        sensor_manager=sensor_manager,  # NUEVO
     )
 
     # ------------------------------------------------------------------
-    # Registro de observadores MQTT
+    # Registro de observadores MQTT (para placas WiFi que publican por MQTT)
     # ------------------------------------------------------------------
     mqtt_bus.register(data_receiver)
-    mqtt_bus.register(window)
 
     # ------------------------------------------------------------------
     # Cierre limpio
     # ------------------------------------------------------------------
     def on_close() -> None:
         logger.info("Cerrando FoT Estación Base")
-        board_service.stop()
-        mqtt_bus.unregister(window)
+        sensor_manager.disconnect_all()
         mqtt_bus.unregister(data_receiver)
         mqtt_bus.stop()
         event_controller.cleanup()

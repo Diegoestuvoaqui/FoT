@@ -1,35 +1,35 @@
+// src/firmware/abstractSensors/DHT11Adapter.cpp
 #include "DHT11Adapter.h"
 #include <math.h>
 
-const char DHT11Adapter::unitCelsius[] PROGMEM = "°C";
-const char DHT11Adapter::unitPercent[] PROGMEM = "%";
-
-// Constructor: ahora sí se llama DHT11Adapter y usa DHT11
-DHT11Adapter::DHT11Adapter(uint8_t pin, SensorType readingType)
-    : dht(pin, DHT11), pin(pin), readingType(readingType), _lastValue(NAN) {
+DHT11Adapter::DHT11Adapter(uint8_t pin, const char* name)
+    : dht(pin, DHT11), pin(pin), _lastTemp(NAN), _lastHum(NAN) {
+    dht.begin();
+    _readTemp = (strcmp(name, "temp") == 0);
 }
 
 float DHT11Adapter::read() {
-    if (readingType == SENSOR_DHT11_TEMP) {
-        _lastValue = dht.readTemperature();
-    } else if (readingType == SENSOR_DHT11_HUM) {
-        _lastValue = dht.readHumidity();
+    if (_readTemp) {
+        _lastTemp = dht.readTemperature();
+        return _lastTemp;
+    } else {
+        _lastHum = dht.readHumidity();
+        return _lastHum;
     }
-    return _lastValue;
 }
 
 bool DHT11Adapter::isValid() {
-    if (isnan(_lastValue)) return false;
-    if (readingType == SENSOR_DHT11_TEMP)
-        return (_lastValue >= 0.0f && _lastValue <= 50.0f);
-    else
-        return (_lastValue >= 20.0f && _lastValue <= 90.0f);
+    if (_readTemp) {
+        return !isnan(_lastTemp) && _lastTemp >= -10.0f && _lastTemp <= 60.0f;
+    } else {
+        return !isnan(_lastHum) && _lastHum >= 0.0f && _lastHum <= 100.0f;
+    }
 }
 
-SensorType DHT11Adapter::getType() {
-    return readingType;
+const char* DHT11Adapter::getName() {
+    return _readTemp ? "temp" : "hum";
 }
 
-const char *DHT11Adapter::getUnitPGM() {
-    return (readingType == SENSOR_DHT11_TEMP) ? unitCelsius : unitPercent;
+const char* DHT11Adapter::getUnit() {
+    return _readTemp ? "C" : "%";
 }

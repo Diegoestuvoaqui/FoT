@@ -1,4 +1,4 @@
-# logic/data_receiver.py
+# src/station/logic/data_receiver.py
 import logging
 
 from data.database import Database
@@ -9,8 +9,8 @@ logger = logging.getLogger(__name__)
 
 class DataReceiver:
     """
-    Observer concreto — solo persiste datos y actualiza el modelo de dominio.
-    No evalúa umbrales, no publica comandos, no tiene lógica de riego.
+    Observer que recibe lecturas de sensores y las persiste.
+    Simplificado: solo guarda datos, sin lógica de riego ni estados FSM.
     """
 
     def __init__(self, db: Database, finca: Finca | None = None):
@@ -18,71 +18,48 @@ class DataReceiver:
         self._finca = finca
 
     def set_finca(self, finca: Finca) -> None:
-        """Asigna la finca después de la autenticación del usuario."""
         self._finca = finca
 
-    # --------------------------------------------------------------------------
-    # Interfaz Observer
-    # --------------------------------------------------------------------------
-    def on_event(self, topic: str, data: dict) -> None:
-        try:
-            parcela_id = topic.split("/")[1]
-        except IndexError:
-            logger.warning("Tópico con formato inesperado: %s", topic)
+    def on_reading(self, parcela_id: str, data: dict) -> None:
+        """
+        Procesa una lectura recibida de un sensor.
+        data: {"ts": 12345, "data": {"temp": {"value": 22.5, "unit": "C"}, ...}, "valid": true}
+        """
+        if not self._finca:
+            logger.debug("Finca no asignada, descartando lectura")
             return
 
-        if topic.endswith("/sensores"):
-            self._handle_sensores(parcela_id, data)
-        elif topic.endswith("/estado"):
-            self._handle_estado(parcela_id, data)
-        else:
-            logger.debug("Tópico no manejado por DataReceiver: %s", topic)
+        parcela = self._finca.get_parcela(parcela_id)
+        if not parcela:
+            logger.warning("Parcela desconocida: %s", parcela_id)
+            return
 
-    # --------------------------------------------------------------------------
-    # Handlers privados
-    # --------------------------------------------------------------------------
-    def _handle_sensores(self, parcela_id: str, data: dict) -> None:
-        # 1. Persistir en base de datos
+        # Extraer valores planos para la BD
+        readings = data.get("data", {})
+        flat_data = {
+            "ts": data.get("ts", 0),
+        }
+
+        for sensor_name, sensor_data in readings.items():
+            if isinstance(sensor_data, dict) and "value" in sensor_data:
+                flat_data[sensor_name] = sensor_data["value"]
+
+        # Guardar en BD
         try:
-            self._db.save_reading(parcela_id, data)
+            self._db.save_reading(parcela_id, flat_data)
         except Exception as e:
-            logger.error("Error guardando lectura de %s: %s", parcela_id, e)
-
-        # 2. Actualizar modelo de dominio directamente en la parcela
-        if self._finca is None:
-            logger.debug("Finca no asignada aún, lectura solo en BD")
+            logger.error("Error guardando lectura: %s", e)
             return
 
-        parcela = self._finca.get_parcela(parcela_id)
-        if parcela is None:
-            logger.warning("Lectura recibida de parcela desconocida: %s", parcela_id)
-            return
+        # Actualizar modelo en memoria
+        parcela.update_reading(flat_data)
 
-        parcela.update_reading(data)
+        logger.debug("Lectura guardada para %s: %s", parcela_id, flat_data)
 
-    def _handle_estado(self, parcela_id: str, data: dict) -> None:
-        if self._finca is None:
-            return
-
-        parcela = self._finca.get_parcela(parcela_id)
-        if parcela is None:
-            logger.warning("Estado recibido de parcela desconocida: %s", parcela_id)
-            return
-
-        # 1. Actualizar modo y estado FSM en el modelo de dominio
-        state = data.get("state", "")
-        if state in ("Monitoring",):
-            parcela.modo = "auto"
-        elif state in ("Idle",):
-            parcela.modo = "manual"
-        # Irrigating y Fault no cambian el modo — solo reflejan un estado transitorio
-
-        parcela.fsm_state = state  # atributo dinámico — la UI lo lee para el color
-        parcela.relay_on = data.get("relay", False)
-
-        # 2. Persistir evento de fallo
-        if state == "Fault":
-            try:
-                self._db.save_event(parcela_id, "fault", str(data))
-            except Exception as e:
-                logger.error("Error guardando evento fault de %s: %s", parcela_id, e)
+    def on_identify(self, parcela_id: str, data: dict) -> None:
+        """Procesa respuesta de identificación del sketch."""
+        logger.info("Sketch identificado en %s: %s v%s (%d sensores)",
+                    parcela_id,
+                    data.get("name", "unknown"),
+                    data.get("version", "?"),
+                    data.get("sensors", 0))

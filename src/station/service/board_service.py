@@ -1,183 +1,232 @@
-# service/board_service.py
-import logging
+# src/station/service/board_service.py
+"""
+Servicio de gestión de placas Arduino.
+Integra detección USB/Bluetooth, conexión vía SensorManager,
+y mantenimiento del catálogo de placas conocidas.
+"""
+from __future__ import annotations
 
+import logging
+from typing import Callable, Optional
+
+from data.database import Database
 from domain.boards import Board
-from logic.device_scanner import USBScanner
-from logic.serial_bridge import SerialBridge
+from logic.sensor_manager import SensorManager
 
 logger = logging.getLogger(__name__)
 
 
 class BoardService:
     """
-    Gestiona el ciclo de vida de las placas Arduino:
-    - Descubrimiento USB (conexión/desconexión)
-    - Serial bridges (abrir, cerrar, leer)
-    - Asignación de placas a parcelas
-    - Resolución de bridge activo para una parcela
+    Gestiona el ciclo de vida de las placas:
+    - Detección y registro
+    - Conexión/desconexión (USB/Bluetooth)
+    - Identificación de sketch activo
+    - Notificación a observers de cambios
     """
 
-    def __init__(self, mqtt_bus, data_receiver):
-        self._mqtt_bus = mqtt_bus
-        self._data_receiver = data_receiver
-
-        self._boards: list[Board] = []
-        self._serial_bridges: dict[str, SerialBridge] = {}
-        self._parcela_to_board: dict[str, str] = {}
-
-        self._board_observers: list = []
-        self._data_observers: list = []
-
-        self._usb_scanner = USBScanner(
-            on_new_board=self._on_usb_new_board,
-            on_remove_board=self._on_usb_remove_board,
-            interval=3,
-        )
-        self._usb_scanner.start()
+    def __init__(self,
+                 db: Database,
+                 sensor_manager: SensorManager,
+                 on_board_changed: Optional[Callable[[Board], None]] = None):
+        self._db = db
+        self._sensor_mgr = sensor_manager
+        self._on_board_changed = on_board_changed
+        self._boards: dict[str, Board] = {}  # board_id -> Board
 
     # ------------------------------------------------------------------
-    # Observadores
+    # Registro de placas
     # ------------------------------------------------------------------
-    def add_board_observer(self, callback):
-        self._board_observers.append(callback)
 
-    def remove_board_observer(self, callback):
-        self._board_observers.remove(callback)
+    def register_board(self,
+                       board_id: str,
+                       port: str,
+                       conn_type: str = "usb",
+                       parcela_id: Optional[str] = None) -> Board:
+        """
+        Registra una placa detectada. Si ya existe, actualiza datos.
+        conn_type: "usb" | "bluetooth"
+        """
+        board = self._boards.get(board_id)
+        if board:
+            board.port = port
+            board.conn = conn_type
+            board.status = "Detectada"
+        else:
+            board = Board(
+                board_id=board_id,
+                conn=conn_type,
+                status="Detectada",
+                parcela=parcela_id,
+                port=port,
+            )
+            self._boards[board_id] = board
 
-    def add_data_observer(self, callback):
-        self._data_observers.append(callback)
+        # Persistir en BD
+        self._persist_board(board)
+        self._notify_change(board)
+        return board
 
-    def remove_data_observer(self, callback):
-        self._data_observers.remove(callback)
+    def connect_board(self, board_id: str, parcela_id: str) -> tuple[bool, str]:
+        """
+        Conecta una placa a una parcela (vincula físicamente).
+        """
+        board = self._boards.get(board_id)
+        if not board:
+            return False, "Placa no registrada"
 
-    def _notify_board(self, board: Board):
-        for obs in self._board_observers:
-            obs(board)
+        if not board.port:
+            return False, "Placa sin puerto asignado"
 
-    def _notify_data(self, topic: str, data: dict):
-        for obs in self._data_observers:
-            obs(topic, data)
+        # Conectar según tipo
+        if board.conn == "usb":
+            ok = self._sensor_mgr.connect_usb(board.port, parcela_id)
+        elif board.conn == "bluetooth":
+            ok = self._sensor_mgr.connect_bluetooth(board.port, parcela_id)
+        else:
+            return False, f"Tipo de conexión desconocido: {board.conn}"
 
-    # ------------------------------------------------------------------
-    # USB
-    # ------------------------------------------------------------------
-    def _on_usb_new_board(self, port):
-        board_id = port.serial_number or port.device
-        if any(b.id == board_id for b in self._boards):
+        if ok:
+            board.parcela = parcela_id
+            board.status = "Conectada"
+            self._persist_board(board)
+            self._notify_change(board)
+            return True, ""
+        else:
+            board.status = "Error de conexión"
+            self._notify_change(board)
+            return False, f"No se pudo conectar a {board.port}"
+
+    def disconnect_board(self, board_id: str) -> None:
+        """Desconecta una placa de su parcela."""
+        board = self._boards.get(board_id)
+        if not board:
             return
 
-        board = Board(
-            board_id=board_id,
-            conn="usb",
-            status="Conectada",
-            port=port.device,
-        )
-        self._boards.append(board)
-        self._notify_board(board)
-        self._start_serial_bridge(port.device)
+        if board.parcela:
+            self._sensor_mgr.disconnect(board.parcela)
+            board.parcela = None
 
-    def _on_usb_remove_board(self, device):
-        board = next((b for b in self._boards if b.id == device), None)
-        if board:
-            board.status = "Desconectada"
-            self._notify_board(board)
-        self._stop_serial_bridge(device)
+        board.status = "Desconectada"
+        self._persist_board(board)
+        self._notify_change(board)
 
-    # ------------------------------------------------------------------
-    # Serial bridges
-    # ------------------------------------------------------------------
-    def _start_serial_bridge(self, port: str, baud: int = 9600):
-        def on_serial_message(data: dict):
-            board = next((b for b in self._boards if b.port == port), None)
-            parcela_id = board.parcela if board else None
-
-            if parcela_id:
-                topic = f"fot/{parcela_id}/sensores"
-                self._notify_data(topic, data)
-                self._data_receiver.on_event(topic, data)
-            else:
-                logger.info(
-                    "Dato serial sin parcela asignada (puerto %s): %s",
-                    port, data
-                )
-
-        bridge = SerialBridge(port, baud, on_message=on_serial_message)
-        if bridge.connect():
-            self._serial_bridges[port] = bridge
-            return bridge
-        return None
-
-    def _stop_serial_bridge(self, port: str):
-        bridge = self._serial_bridges.pop(port, None)
-        if bridge:
-            bridge.disconnect()
-
-    # ------------------------------------------------------------------
-    # Asignación / Desasignación
-    # ------------------------------------------------------------------
-    def assign_board(self, board_id: str, parcela_id: str) -> None:
-        board = next((b for b in self._boards if b.id == board_id), None)
-        if not board:
-            raise ValueError(f"Placa {board_id} no encontrada")
-
-        old_board_id = self._parcela_to_board.get(parcela_id)
-        if old_board_id and old_board_id != board_id:
-            old_board = next((b for b in self._boards if b.id == old_board_id), None)
-            if old_board:
-                old_board.parcela = None
-                self._notify_board(old_board)
-
-        board.parcela = parcela_id
-        self._parcela_to_board[parcela_id] = board_id
-        self._notify_board(board)
-
-    def unassign_board(self, board_id: str) -> None:
-        board = next((b for b in self._boards if b.id == board_id), None)
-        if not board:
-            raise ValueError(f"Placa {board_id} no encontrada")
-
-        if board.parcela and board.parcela in self._parcela_to_board:
-            del self._parcela_to_board[board.parcela]
-
-        board.parcela = None
-        self._notify_board(board)
+    def remove_board(self, board_id: str) -> None:
+        """Elimina una placa del registro."""
+        board = self._boards.pop(board_id, None)
+        if board and board.parcela:
+            self._sensor_mgr.disconnect(board.parcela)
 
     # ------------------------------------------------------------------
     # Consultas
     # ------------------------------------------------------------------
+
+    def get_board(self, board_id: str) -> Optional[Board]:
+        return self._boards.get(board_id)
+
     def get_boards(self) -> list[Board]:
-        return list(self._boards)
+        return list(self._boards.values())
 
-    def get_board(self, board_id: str) -> Board | None:
-        return next((b for b in self._boards if b.id == board_id), None)
+    def get_board_for_parcela(self, parcela_id: str) -> Optional[Board]:
+        for board in self._boards.values():
+            if board.parcela == parcela_id:
+                return board
+        return None
 
-    def get_bridge_for_parcela(self, parcela_id: str) -> SerialBridge | None:
-        board_id = self._parcela_to_board.get(parcela_id)
-        if not board_id:
-            return None
-        board = next((b for b in self._boards if b.id == board_id), None)
-        if not board or not board.port:
-            return None
-        return self._serial_bridges.get(board.port)
-
-    def get_assigned_parcela(self, board_id: str) -> str | None:
-        board = self.get_board(board_id)
-        return board.parcela if board else None
-
-    def is_parcela_connected(self, parcela_id: str) -> bool:
-        return self.get_bridge_for_parcela(parcela_id) is not None
+    def is_connected(self, board_id: str) -> bool:
+        board = self._boards.get(board_id)
+        if not board or not board.parcela:
+            return False
+        return self._sensor_mgr.is_connected(board.parcela)
 
     # ------------------------------------------------------------------
-    # Firmware
+    # Comandos a placa
     # ------------------------------------------------------------------
-    def get_firmware_version(self, board_id: str) -> str:
-        board = self.get_board(board_id)
-        return board.firmware_version if board and board.firmware_version else "Desconocida"
+
+    def request_read(self, board_id: str) -> bool:
+        """Solicita lectura inmediata al sensor."""
+        board = self._boards.get(board_id)
+        if not board or not board.parcela:
+            return False
+        return self._sensor_mgr.request_read(board.parcela)
+
+    def set_interval(self, board_id: str, ms: int) -> bool:
+        """Cambia intervalo de lectura."""
+        board = self._boards.get(board_id)
+        if not board or not board.parcela:
+            return False
+        return self._sensor_mgr.set_interval(board.parcela, ms)
 
     # ------------------------------------------------------------------
-    # Cierre limpio
+    # Callbacks desde SensorManager
     # ------------------------------------------------------------------
-    def stop(self):
-        self._usb_scanner.stop()
-        for port in list(self._serial_bridges.keys()):
-            self._stop_serial_bridge(port)
+
+    def on_sensor_identify(self, parcela_id: str, data: dict) -> None:
+        """Recibe identificación del sketch cuando se conecta."""
+        board = self.get_board_for_parcela(parcela_id)
+        if not board:
+            return
+
+        board.firmware_version = data.get("version")
+        # Guardar metadatos del sketch para mostrar en UI
+        board.conn_module = data.get("name", "Unknown")
+        self._persist_board(board)
+        self._notify_change(board)
+
+    # ------------------------------------------------------------------
+    # Persistencia
+    # ------------------------------------------------------------------
+
+    def _persist_board(self, board: Board) -> None:
+        try:
+            self._db.save_board({
+                "id": board.id,
+                "conn": board.conn,
+                "port": board.port,
+                "status": board.status,
+                "parcela_id": board.parcela,
+                "firmware_version": board.firmware_version,
+                "last_seen": board.last_seen,
+            })
+        except Exception as e:
+            logger.error("Error persistiendo board %s: %s", board.id, e)
+
+    def load_from_db(self) -> None:
+        """Carga placas registradas previamente."""
+        rows = self._db.get_all_boards()
+        for row in rows:
+            board = Board(
+                board_id=row["id"],
+                conn=row.get("conn", "usb"),
+                status=row.get("status", "Desconocida"),
+                parcela=row.get("parcela_id"),
+                port=row.get("port", ""),
+                firmware_version=row.get("firmware_version"),
+                last_seen=row.get("last_seen"),
+            )
+            self._boards[board.id] = board
+
+    # ------------------------------------------------------------------
+    # Observadores
+    # ------------------------------------------------------------------
+
+    def add_observer(self, callback: Callable[[Board], None]) -> None:
+        self._on_board_changed = callback
+
+    def remove_observer(self) -> None:
+        self._on_board_changed = None
+
+    def _notify_change(self, board: Board) -> None:
+        if self._on_board_changed:
+            try:
+                self._on_board_changed(board)
+            except Exception as e:
+                logger.error("Error en observer: %s", e)
+
+    # ------------------------------------------------------------------
+    # Cierre
+    # ------------------------------------------------------------------
+
+    def stop(self) -> None:
+        self._sensor_mgr.disconnect_all()
+        self._boards.clear()

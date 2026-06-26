@@ -1,3 +1,4 @@
+// src/firmware/abstractSensors/DHT11Adapter.h
 #ifndef DHT11_ADAPTER_H
 #define DHT11_ADAPTER_H
 
@@ -8,23 +9,18 @@ class DHT11Adapter : public ISensor {
 private:
     DHT dht;
     uint8_t pin;
-    SensorType readingType;
-    float _lastValue;
-
-    static const char unitCelsius[] PROGMEM;
-    static const char unitPercent[] PROGMEM;
+    float _lastTemp;
+    float _lastHum;
+    bool _readTemp;  // true = temp, false = hum
 
 public:
-    // readingType: SENSOR_DHT11_TEMP o SENSOR_DHT11_HUM
-    DHT11Adapter(uint8_t pin, SensorType readingType);
+    // name: "temp" o "hum"
+    DHT11Adapter(uint8_t pin, const char* name);
 
     float read() override;
-
     bool isValid() override;
-
-    SensorType getType() override;
-
-    const char *getUnitPGM() override;
+    const char* getName() override;
+    const char* getUnit() override;
 };
 
 #endif

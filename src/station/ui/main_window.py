@@ -23,10 +23,8 @@ logger = logging.getLogger(__name__)
 
 class MainWindow:
     """
-    Vista principal — solo orquestación de UI.
-    Todo el negocio está en controllers inyectados.
-    Ahora gestiona también la visibilidad de paneles de autenticación
-    y administración sin reemplazar los diálogos modales existentes.
+    Vista principal — orquestación de UI.
+    Integra SensorManager para conexiones USB/Bluetooth/WiFi.
     """
 
     def __init__(self,
@@ -35,20 +33,20 @@ class MainWindow:
                  mqtt_bus,
                  parcela_ctrl,
                  board_ctrl,
-                 irrig_ctrl,
                  snap_ctrl,
                  export_ctrl,
                  event_ctrl,
                  auth_ctrl,
+                 sensor_manager,  # NUEVO
                  user=None):
         self._root = root
         self._finca = finca
         self._mqtt_bus = mqtt_bus
+        self._sensor_manager = sensor_manager  # NUEVO
 
-        # Controllers inyectados
+        # Controllers
         self._parcela_ctrl = parcela_ctrl
         self._board_ctrl = board_ctrl
-        self._irrig_ctrl = irrig_ctrl
         self._snap_ctrl = snap_ctrl
         self._export_ctrl = export_ctrl
         self._event_ctrl = event_ctrl
@@ -64,16 +62,13 @@ class MainWindow:
         self._root.grid_rowconfigure(1, weight=1)
         self._root.grid_columnconfigure(1, weight=1)
 
-        # Layout
         self._build_layout()
 
-        # Si ya hay usuario, cargar datos; si no, mostrar login
         if self._user is not None:
             self._setup_authenticated_ui()
         else:
             self._show_auth_ui()
 
-        # Reloj de la barra de estado
         self._status_bar.start_clock(root)
 
     # ------------------------------------------------------------------
@@ -98,10 +93,9 @@ class MainWindow:
         self._content_area.grid_rowconfigure(0, weight=1)
         self._content_area.grid_columnconfigure(0, weight=1)
 
-        # Paneles
         self._panels: dict[str, ctk.CTkFrame] = {}
 
-        # Panel de autenticación (embebido)
+        # Panel de autenticación
         self.login_panel = LoginPanel(
             self._content_area,
             auth_controller=self._auth_ctrl,
@@ -109,7 +103,7 @@ class MainWindow:
         )
         self._panels["login"] = self.login_panel
 
-        # Panel principal — callbacks apuntan a controllers
+        # Panel principal de parcelas
         self.main_panel = MainPanel(
             self._content_area,
             on_add_parcela=self._on_add_parcela,
@@ -117,18 +111,18 @@ class MainWindow:
             on_select_parcela=self._on_select_parcela,
             on_apply_thresholds=self._on_apply_thresholds,
             on_mode_change=self._on_mode_change,
-            on_irrigate=self._on_irrigate,
-            on_stop=self._on_stop,
+            # Eliminados: on_irrigate, on_stop
         )
         self._panels["parcelas"] = self.main_panel
 
-        # Arduino panel — callbacks apuntan a controllers
+        # Panel Arduino — NUEVO con sensor_manager
         self.arduino_panel = ArduinoPanel(
             self._content_area,
             on_assign=self._on_assign_board,
             on_unassign=self._on_unassign_board,
-            on_firmware_update=self._on_firmware_update,
-            on_scan_bluetooth=None,
+            on_read_now=self._on_read_now,  # NUEVO
+            on_scan_bluetooth=self._on_scan_bluetooth,  # NUEVO
+            on_scan_wifi=self._on_scan_wifi,  # NUEVO
         )
         self._panels["arduinos"] = self.arduino_panel
 
@@ -136,7 +130,7 @@ class MainWindow:
         self.help_panel = HelpPanel(self._content_area)
         self._panels["ayuda"] = self.help_panel
 
-        # Admin panel (gestión de usuarios)
+        # Admin panel
         self.admin_panel = AdminPanel(
             self._content_area,
             auth_controller=self._auth_ctrl,
@@ -146,31 +140,27 @@ class MainWindow:
         self._panels["admin"] = self.admin_panel
 
     # ------------------------------------------------------------------
-    # Autenticación: mostrar / ocultar
+    # Autenticación
     # ------------------------------------------------------------------
     def _show_auth_ui(self) -> None:
-        """Muestra solo el panel de login, oculta la navegación principal."""
         self._side_bar.grid_remove()
         self._top_bar.grid_remove()
         self._status_bar.grid_remove()
         self._navigate("login")
 
     def _setup_authenticated_ui(self) -> None:
-        """Restaura la UI completa tras login exitoso."""
         self._side_bar.grid()
         self._top_bar.grid()
         self._status_bar.grid()
 
-        # Añadir botón de Admin dinámicamente si es admin
         if self._user.is_admin():
             self._side_bar.add_nav_button(
                 "admin", "Admin", "Gestión de usuarios"
             )
 
-        # Cargar datos iniciales
         self._load_initial_data()
 
-        # Registrar callbacks de controllers para actualizar UI
+        # Callbacks de controllers
         self._parcela_ctrl.set_ui_callback(
             on_refresh=self._refresh_parcela_list,
             on_select=self._on_select_parcela
@@ -178,15 +168,19 @@ class MainWindow:
         self._event_ctrl.set_ui_callback(self._on_event_logged)
         self._board_ctrl.set_ui_callback(self._on_board_updated)
 
-        # Navegar a panel principal
+        # Callback de sensor_manager para lecturas en tiempo real
+        self._sensor_manager.set_callbacks(
+            on_reading=self._on_sensor_reading,
+            on_identify=self._on_sensor_identify
+        )
+
         self._current_panel = None
         self._navigate("parcelas")
         self._side_bar.set_active("parcelas")
 
     def _on_login_success(self, user) -> None:
-        """Callback desde LoginPanel cuando el usuario se autentica."""
         self._user = user
-        logger.info("Login desde panel embebido: %s", user.username)
+        logger.info("Login: %s", user.username)
         self._setup_authenticated_ui()
 
     # ------------------------------------------------------------------
@@ -225,7 +219,7 @@ class MainWindow:
         for board in boards:
             self.arduino_panel.update_board(board)
 
-        # Admin: refrescar lista si aplica
+        # Admin
         if self._user and self._user.is_admin():
             self._refresh_admin_users()
 
@@ -233,7 +227,6 @@ class MainWindow:
     # Admin callbacks
     # ------------------------------------------------------------------
     def _open_register_dialog(self) -> None:
-        """Abre el diálogo modal de registro (reutiliza el existente)."""
         allow_admin = self._auth_ctrl.can_register(self._user)
         RegisterDialog(
             self._root,
@@ -254,6 +247,17 @@ class MainWindow:
         ok, users = self._auth_ctrl.list_users(self._user)
         if ok:
             self.admin_panel.refresh_users(users, self._user.id)
+
+    # ------------------------------------------------------------------
+    # Callbacks de SensorManager (NUEVOS)
+    # ------------------------------------------------------------------
+    def _on_sensor_reading(self, parcela_id: str, data: dict) -> None:
+        """Llegó lectura de sensor — actualizar UI."""
+        self._root.after(0, lambda: self.arduino_panel.update_reading(parcela_id, data))
+
+    def _on_sensor_identify(self, parcela_id: str, data: dict) -> None:
+        """Placa se identificó."""
+        logger.info("Identificado %s: %s", parcela_id, data)
 
     # ------------------------------------------------------------------
     # Callbacks de UI → Controller (Parcelas)
@@ -320,16 +324,10 @@ class MainWindow:
                 ErrorHandler.show(ErrorCode.ERR_DB_WRITE, self._root)
 
     def _on_mode_change(self, value: str) -> None:
-        ok, error = self._parcela_ctrl.change_mode(self._selected_parcela_id, value)
-
-    def _on_irrigate(self) -> None:
-        self._irrig_ctrl.irrigate(self._selected_parcela_id)
-
-    def _on_stop(self) -> None:
-        self._irrig_ctrl.stop(self._selected_parcela_id)
+        self._parcela_ctrl.change_mode(self._selected_parcela_id, value)
 
     # ------------------------------------------------------------------
-    # Callbacks de UI → Controller (Arduino)
+    # Callbacks de UI → Controller (Arduino) — ACTUALIZADOS
     # ------------------------------------------------------------------
     def _on_assign_board(self, board_id: str) -> None:
         parcelas = self._parcela_ctrl.list_parcelas()
@@ -338,21 +336,35 @@ class MainWindow:
             self._root,
             board_id,
             dialog_data,
-            on_confirm=self._board_ctrl.assign_board
+            on_confirm=lambda bid, pid: self._board_ctrl.connect_to_parcela(bid, pid)
         )
 
     def _on_unassign_board(self, board_id: str) -> None:
-        self._board_ctrl.unassign_board(board_id)
+        self._board_ctrl.disconnect(board_id)
+
+    def _on_read_now(self, board_id: str) -> None:
+        """NUEVO: Solicitar lectura inmediata."""
+        self._board_ctrl.read_now(board_id)
+
+    def _on_scan_bluetooth(self) -> None:
+        """NUEVO: Escanear dispositivos Bluetooth."""
+        # TODO: Integrar con device_scanner para BT
+        logger.info("Escanear Bluetooth — no implementado")
+
+    def _on_scan_wifi(self) -> None:
+        """NUEVO: Escanear dispositivos WiFi (UNO R4)."""
+        # TODO: Detectar placas R4 en red local (mDNS, IP fija, etc.)
+        logger.info("Escanear WiFi — no implementado")
 
     def _on_firmware_update(self, board_id: str) -> None:
-        info = self._board_ctrl.get_firmware_info(board_id)
+        info = self._board_ctrl.get_board_info(board_id)
         if not info:
             return
         FirmwareDialog(
             self._root,
             board_id=info["board_id"],
-            port=info["port"],
-            current_version=info["current_version"],
+            port=info.get("port", ""),
+            current_version=info.get("current_version", "Desconocida"),
         )
 
     # ------------------------------------------------------------------
@@ -365,7 +377,7 @@ class MainWindow:
         ExportDialog(self._root, dialog_data, self._export_ctrl, ErrorHandler())
 
     # ------------------------------------------------------------------
-    # Callbacks de Controller → UI (repintado)
+    # Callbacks de Controller → UI
     # ------------------------------------------------------------------
     def _refresh_parcela_list(self) -> None:
         parcelas = self._parcela_ctrl.list_parcelas()
@@ -378,10 +390,9 @@ class MainWindow:
         self._root.after(0, lambda: self.arduino_panel.update_board(board))
 
     # ------------------------------------------------------------------
-    # Observer MQTT
+    # Observer MQTT (para placas WiFi)
     # ------------------------------------------------------------------
     def on_event(self, topic: str, data: dict) -> None:
-        """Recibe eventos del bus MQTT y repinta la UI de forma segura."""
         self._root.after(0, self._update_ui, topic, data)
 
     def _update_ui(self, topic: str, data: dict) -> None:
@@ -395,19 +406,8 @@ class MainWindow:
             return
 
         if topic.endswith("/sensores"):
-            if parcela_id == self._selected_parcela_id:
-                self.main_panel.update_detail(parcela)
-
-        elif topic.endswith("/estado"):
-            self._refresh_parcela_list()
-            if parcela_id == self._selected_parcela_id:
-                self.main_panel.update_detail(parcela)
-            if data.get("state") == "Fault":
-                self._event_ctrl.append(
-                    parcela_id,
-                    f"[FALLO] {parcela_id}: {data}",
-                    "error"
-                )
+            # Placa WiFi envió lectura por MQTT
+            self._on_sensor_reading(parcela_id, data)
 
     # ------------------------------------------------------------------
     # Cierre limpio

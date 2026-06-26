@@ -1,124 +1,90 @@
 // src/main.cpp
-#ifdef ARDUINO
 #include <Arduino.h>
-#else
-#include "ArduinoMock.h"
-#endif
 #include <ArduinoJson.h>
-#include "firmware/abstractSensors/SensorFactory.h"
-#include "firmware/abstractSensors/SensorType.h"
-#include "firmware/stateMachine/StateMachine.h"
 
-StateMachine fsm;
-String inputBuffer = "";
+#include "firmware/core/communication/ICommunication.h"
+#include "firmware/core/communication/SerialCommunication.h"
+#include "firmware/core/communication/BluetoothCommunication.h"
+#include "firmware/core/commands/CommandParser.h"
+#include "firmware/core/commands/ICommand.h"
+#include "firmware/core/sketches/SensorSketch.h"
+#include "firmware/abstractSensors/DHT11Adapter.h"
 
-// ─── Prototipo de la función ───────────────────────────────────────────────
-void procesarComando(const String &cmd);
+// ─── CONFIGURACIÓN ───────────────────────────────────────────────────────────
+
+// Seleccionar comunicación:
+// #define USE_BLUETOOTH
+#define USE_USB
+
+#ifdef USE_BLUETOOTH
+    #define BT_RX_PIN 10
+    #define BT_TX_PIN 11
+    static BluetoothCommunication comm(BT_RX_PIN, BT_TX_PIN);
+#else
+    static SerialCommunication comm(115200);
+#endif
+
+// ─── VARIABLES GLOBALES ───────────────────────────────────────────────────
+
+SensorSketch sketch;
+String inputBuffer;
+
+// ─── SETUP ─────────────────────────────────────────────────────────────────
 
 void setup() {
-    Serial.begin(115200);
-    while (!Serial);
+    // Iniciar comunicación
+    comm.begin();
+    sketch.setCommunication(&comm);
 
-    Serial.println(F("FoT - Firmware DHT11 + Relay (USB)"));
+    // Configurar sensores
+    sketch.addSensor(new DHT11Adapter(2, "temp"));
+    sketch.addSensor(new DHT11Adapter(2, "hum"));
 
-    ISensor *tempSensor = SensorFactory::create(SENSOR_DHT11_TEMP, 2);
-    ISensor *humSensor = SensorFactory::create(SENSOR_DHT11_HUM, 2);
+    // Setup del sketch
+    sketch.setup();
 
-    if (tempSensor) fsm.addSensor(tempSensor);
-    else Serial.println(F("ERROR: sensor temperatura no creado"));
-
-    if (humSensor) fsm.addSensor(humSensor);
-    else Serial.println(F("ERROR: sensor humedad aire no creado"));
-
-    fsm.applyStartupState();
-
-    Serial.print(F("Estado inicial: "));
-    Serial.println(fsm.getCurrentStateName());
-    Serial.println(F(
-        "Comandos: irrigate, stop, auto, manual, reset_fault, enable <sensor>, disable <sensor>, th <min> <max>"));
+    // Info inicial
+    StaticJsonDocument<128> info;
+    info["status"] = "ready";
+    info["comm"] = comm.name();
+    info["sensors"] = sketch.getSensorCount();
+    
+    char buf[128];
+    serializeJson(info, buf, sizeof(buf));
+    comm.send(buf);
 }
+
+// ─── LOOP ──────────────────────────────────────────────────────────────────
 
 void loop() {
-    fsm.tick();
-
-    while (Serial.available()) {
-        char c = Serial.read();
-        if (c == '\n') {
-            procesarComando(inputBuffer);
-            inputBuffer = "";
+    // 1. Procesar comandos entrantes
+    while (comm.available()) {
+        int c = comm.read();
+        if (c < 0) break;
+        
+        if (c == '\n' || c == '\r') {
+            if (inputBuffer.length() > 0) {
+                inputBuffer.trim();
+                
+                ICommand* cmd = CommandParser::parse(inputBuffer.c_str());
+                if (cmd) {
+                    cmd->execute(sketch);
+                    delete cmd;
+                }
+                
+                inputBuffer = "";
+            }
         } else {
-            inputBuffer += c;
+            inputBuffer += (char)c;
+            if (inputBuffer.length() > 256) {
+                inputBuffer = "";
+            }
         }
     }
 
-    delay(10);
-}
+    // 2. Loop del sketch (lectura periódica)
+    sketch.loop();
 
-void procesarComando(const String &line) {
-    String cmd = line;
-    cmd.trim();
-    if (cmd.length() == 0) return;
-
-    // ── Modo JSON (viene de SerialBridge de la estación Python) ──────────
-    if (cmd.startsWith("{")) {
-        JsonDocument doc;
-        DeserializationError err = deserializeJson(doc, cmd);
-        if (err) {
-            Serial.println(F("{\"error\":\"json_parse\"}"));
-            return;
-        }
-
-        const char *c = doc["cmd"] | "";
-
-        if (strcmp(c, "irrigate") == 0) {
-            fsm.dispatchCommand("irrigate");
-        } else if (strcmp(c, "stop") == 0) {
-            fsm.dispatchCommand("stop");
-        } else if (strcmp(c, "set_mode_auto") == 0) {
-            fsm.dispatchCommand("set_mode_auto");
-        } else if (strcmp(c, "set_mode_manual") == 0) {
-            fsm.dispatchCommand("set_mode_manual");
-        } else if (strcmp(c, "reset_fault") == 0) {
-            fsm.dispatchCommand("reset_fault");
-        } else if (strcmp(c, "set_thresholds") == 0) {
-            float minVal = doc["min"] | 30.0f;
-            float maxVal = doc["max"] | 70.0f;
-            fsm.dispatchCommand("set_thresholds", nullptr, minVal, maxVal);
-        } else if (strcmp(c, "enable_sensor") == 0) {
-            const char *sensor = doc["sensor"] | "";
-            fsm.dispatchCommand("enable_sensor", sensor);
-        } else if (strcmp(c, "disable_sensor") == 0) {
-            const char *sensor = doc["sensor"] | "";
-            fsm.dispatchCommand("disable_sensor", sensor);
-        } else {
-            Serial.println(F("{\"error\":\"unknown_cmd\"}"));
-        }
-        return;
-    }
-
-    // ── Modo texto plano (útil para debug manual desde el Serial Monitor) ─
-    Serial.print(F("Comando: "));
-    Serial.println(cmd);
-
-    if (cmd == "irrigate")            fsm.dispatchCommand("irrigate");
-    else if (cmd == "stop")           fsm.dispatchCommand("stop");
-    else if (cmd == "auto")           fsm.dispatchCommand("set_mode_auto");
-    else if (cmd == "manual")         fsm.dispatchCommand("set_mode_manual");
-    else if (cmd == "reset_fault")    fsm.dispatchCommand("reset_fault");
-    else if (cmd.startsWith("enable ")) {
-        String sensor = cmd.substring(7);
-        fsm.dispatchCommand("enable_sensor", sensor.c_str());
-    } else if (cmd.startsWith("disable ")) {
-        String sensor = cmd.substring(8);
-        fsm.dispatchCommand("disable_sensor", sensor.c_str());
-    } else if (cmd.startsWith("th ")) {
-        float minVal, maxVal;
-        if (sscanf(cmd.c_str() + 3, "%f %f", &minVal, &maxVal) == 2) {
-            fsm.dispatchCommand("set_thresholds", nullptr, minVal, maxVal);
-        } else {
-            Serial.println(F("Formato: th <min> <max>"));
-        }
-    } else {
-        Serial.println(F("Comando no reconocido"));
-    }
+    // 3. Loop de comunicación (si necesita mantener conexión)
+    comm.loop();
 }
