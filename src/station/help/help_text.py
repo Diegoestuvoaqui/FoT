@@ -6,24 +6,23 @@ Se importa como una cadena desde HelpPanel.
 
 HELP_TEXT = """
 ============================================================
-                    FoT — Farm of Things
+                    IoT — Internet of Things
 ============================================================
 
 INTRODUCCIÓN
 ------------
-FoT es un sistema de control de riego automatizado para pequeñas parcelas.
-La estación base se comunica con las placas Arduino (por USB, Bluetooth o WiFi)
-y te permite monitorear y controlar el riego desde una interfaz gráfica.
+FoT es un sistema de monitoreo de sensores para placas Arduino.
+La estación base se comunica con las placas (por USB, Bluetooth o WiFi)
+y te permite visualizar datos en tiempo real desde una interfaz gráfica.
 
 PANELES DE LA APLICACIÓN
 -------------------------
-• Panel Principal: muestra todas las parcelas, sus lecturas en tiempo real
-  y un gráfico histórico. Desde aquí podés cambiar umbrales, modo de operación
-  y activar/desactivar el riego manualmente.
+• Panel DHT11: muestra todas las placas con sketch DHT11, sus lecturas
+  en tiempo real y un historial de datos.
 
 • Gestor de Arduinos: lista las placas detectadas (USB, WiFi o Bluetooth),
-  permite asignar una placa a una parcela, actualizar el firmware y ver
-  los periféricos conectados (sensores, actuadores, módulos de red).
+  permite registrar placas, actualizar el firmware y ver
+  los periféricos conectados (sensores, módulos de red).
 
 • Exportar: guarda los datos históricos (lecturas o eventos) en formato CSV o JSON.
 
@@ -33,45 +32,30 @@ PRIMEROS PASOS
 ---------------
 1. Conectá un Arduino a la estación base por USB (o asegurate de que esté
    enviando datos por MQTT/WiFi).
-2. En el Panel Principal, hacé clic en "+ Añadir parcela" y completá
-   los campos (ID y nombre). El ID puede ser automático (parcela-XXXX).
-3. Andá al Gestor de Arduinos. La placa debería aparecer en la lista.
-   Seleccionala y presioná "Asignar a parcela" para vincularla.
-4. Volvér al Panel Principal, seleccionár la parcela y verás sus lecturas.
-   Podés cambiar el modo a "Automático" para que el sistema riegue solo
-   cuando la humedad del suelo baje del umbral mínimo.
+2. En el Gestor de Arduinos, la placa debería aparecer en la lista.
+   Seleccionala y presioná "Conectar" para iniciar la comunicación.
+3. Volvé al Panel DHT11, seleccioná la placa y verás sus lecturas
+   de temperatura y humedad en tiempo real.
 
 MENSAJES DE ERROR Y SOLUCIONES
 -------------------------------
-• "No se pudo cambiar el modo de operación."
-  → Verificá que la placa esté conectada y que el broker MQTT esté activo.
-• "No se pudo activar el riego."
-  → La parcela puede estar en estado de fallo. Revisá el log de eventos.
-• "Los umbrales deben ser números entre 0 y 100."
-  → Asegurate de ingresar valores válidos (ej. 30 y 70).
-• "Ya existe una parcela con ese ID o nombre."
-  → Usá un identificador único, por ejemplo "parcela-0001".
-• "Error al leer el sensor DHT22 en la placa FTDI_A403."
+• "Error al leer el sensor DHT11 en la placa..."
   → Verificá el cableado del sensor de temperatura/humedad.
 • "No se pudo conectar con la placa en /dev/ttyUSB0."
   → Revisá que el cable USB esté firme y que tengas permisos sobre el puerto.
+• "Sin conexión con el broker MQTT."
+  → Verificá que Mosquitto esté activo en localhost:1883.
+• "No se pudo cargar el firmware."
+  → Revisá que la placa esté en modo bootloader y que avrdude esté instalado.
 
 GLOSARIO DE TÉRMINOS
 ---------------------
-• Sistema de control: la lógica que decide cuándo regar (antes llamada FSM).
-• Modo reposo: la parcela no realiza acciones automáticas (anterior Idle).
-• Modo automático: el sistema monitorea y riega según los umbrales.
-• Regando: estado activo de la bomba de riego.
-• Fallo del sistema: error en sensores o comunicación (Fault).
-• ID de parcela: identificador único de la parcela.
-• Humedad del suelo: porcentaje de agua en la tierra.
-• Humedad del ambiente: humedad relativa del aire.
-• Temperatura: temperatura ambiente en grados Celsius.
-• Parcelas: conjunto de zonas de cultivo (antes "Finca Principal").
-• Instantánea de configuración: copia de seguridad de los ajustes actuales.
+• Sketch: programa cargado en el Arduino (ej: DHT11, futuros sensores).
+• Board / Placa: dispositivo Arduino físico.
+• Sensor: periférico que mide magnitudes (temperatura, humedad, etc.).
+• Lectura: valor actual capturado por un sensor.
 • Servidor de mensajes: el broker MQTT (Mosquitto) que enruta los datos.
 • Conexión en red: comunicación por WiFi/MQTT.
-• Bomba de riego: actuador que controla el paso de agua.
-• Umbral: valor límite para activar/desactivar el riego.
-• Tiempo encendida: segundos desde el último arranque de la placa.
+• Firmware: código compilado cargado en la placa Arduino.
+• Instantánea de configuración: copia de seguridad de los ajustes actuales.
 """

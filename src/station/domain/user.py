@@ -8,15 +8,11 @@ class Role(Enum):
 
 
 class User:
-    """
-    Representa un usuario del sistema.
-    Inmutable una vez creado (excepto para cambio de password).
-    """
-
-    def __init__(self, id: int, username: str, role: str):
+    def __init__(self, id: int, username: str, role: str, is_active: bool = True):
         self.id = id
         self.username = username
         self._role = role
+        self.is_active = is_active
 
     @property
     def role(self) -> str:
@@ -29,7 +25,7 @@ class User:
         return self._role == Role.USER.value
 
     def __repr__(self) -> str:
-        return f"User(id={self.id}, username={self.username!r}, role={self.role!r})"
+        return f"User(id={self.id}, username={self.username!r}, role={self.role!r}, active={self.is_active})"
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, User):

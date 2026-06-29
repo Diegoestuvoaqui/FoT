@@ -18,7 +18,7 @@ class HelpPanel(ctk.CTkFrame):
         # Título
         ctk.CTkLabel(
             self,
-            text="Ayuda de FoT",
+            text="Ayuda de IoT",
             font=FONT_TITLE
         ).grid(row=0, column=0, padx=16, pady=(16, 8), sticky="w")
 

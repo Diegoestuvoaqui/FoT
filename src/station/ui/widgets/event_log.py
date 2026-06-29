@@ -1,6 +1,6 @@
 """
 ui/widgets/event_log.py
-Registro de eventos con filtros: Todos, Solo errores, Solo riegos, Solo cambios de modo.
+Registro de eventos con filtros: Todos, Solo errores, Solo registros.
 Uso:
     log = EventLog(parent)
     log.add_line("14:32 — Fallo sensor suelo")
@@ -28,8 +28,7 @@ class EventLog(ctk.CTkFrame):
         filters = [
             ("Todos", "todos"),
             ("Solo errores", "errores"),
-            ("Solo riegos", "riegos"),
-            ("Solo cambios de modo", "modos"),
+            ("Solo registros", "registros"),
         ]
         for i, (text, value) in enumerate(filters):
             rb = ctk.CTkRadioButton(
@@ -51,7 +50,7 @@ class EventLog(ctk.CTkFrame):
             command=self.clear_view,
         )
         btn_clear.grid(row=0, column=len(filters), padx=8, pady=4, sticky="e")
-        filter_frame.grid_columnconfigure(len(filters), weight=1)  # empuja a la derecha
+        filter_frame.grid_columnconfigure(len(filters), weight=1)
 
         # Cuadro de texto
         self._text = ctk.CTkTextbox(
@@ -62,11 +61,11 @@ class EventLog(ctk.CTkFrame):
         )
         self._text.grid(row=1, column=0, sticky="nsew", padx=6, pady=6)
 
-        self._lines = []  # todas las líneas (crudas, como string)
+        self._lines = []
         self._current_filter = "todos"
 
     def add_line(self, text: str, tipo: str = "") -> None:
-        """Añadir una línea al registro. tipo puede ser 'error', 'riego', 'modo' para filtrar."""
+        """Añadir una línea al registro. tipo puede ser 'error', 'registro' para filtrar."""
         self._lines.append((text, tipo))
         self._apply_filter()
 
@@ -75,7 +74,6 @@ class EventLog(ctk.CTkFrame):
         self._text.configure(state="normal")
         self._text.delete("1.0", "end")
         self._text.configure(state="disabled")
-        # No borramos self._lines, solo la vista.
 
     def _apply_filter(self):
         filter_val = self._filter_var.get()
@@ -88,9 +86,7 @@ class EventLog(ctk.CTkFrame):
                 show = True
             elif filter_val == "errores" and tipo == "error":
                 show = True
-            elif filter_val == "riegos" and tipo == "riego":
-                show = True
-            elif filter_val == "modos" and tipo == "modo":
+            elif filter_val == "registros" and tipo == "registro":
                 show = True
             else:
                 show = False

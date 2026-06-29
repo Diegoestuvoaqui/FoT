@@ -118059,3 +118059,28 @@
 2026-06-26 13:00:18,486 INFO __main__ — UI lista, entrando en mainloop
 2026-06-26 13:00:59,286 INFO __main__ — Cerrando FoT Estación Base
 2026-06-26 13:00:59,363 INFO __main__ — FoT Estación Base cerrada
+2026-06-26 13:37:07,264 INFO __main__ — Arrancando FoT Estación Base
+2026-06-26 13:37:07,266 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-26 13:37:07,271 INFO __main__ — MQTT broker local en localhost:1883
+2026-06-26 13:37:07,349 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-26 13:37:15,640 INFO service.auth_service — Login exitoso: admin (role=admin)
+2026-06-26 13:37:15,642 INFO __main__ — Usuario autenticado: admin (role=admin)
+2026-06-26 13:37:15,644 INFO __main__ — Finca cargada: 0 parcelas para usuario admin
+2026-06-26 13:37:16,443 INFO __main__ — UI lista, entrando en mainloop
+2026-06-26 13:37:35,418 INFO __main__ — Cerrando FoT Estación Base
+2026-06-26 13:37:36,417 INFO __main__ — FoT Estación Base cerrada
+2026-06-26 13:44:48,900 INFO __main__ — Arrancando FoT Estación Base
+2026-06-26 13:44:48,901 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/fot.db
+2026-06-26 13:44:48,905 INFO __main__ — MQTT broker local en localhost:1883
+2026-06-26 13:44:48,905 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-26 13:44:56,496 INFO service.auth_service — Login exitoso: dda132 (role=user)
+2026-06-26 13:44:56,498 INFO __main__ — Usuario autenticado: dda132 (role=user)
+2026-06-26 13:44:56,499 INFO __main__ — Finca cargada: 0 parcelas para usuario dda132
+2026-06-26 13:44:57,240 INFO __main__ — UI lista, entrando en mainloop
+2026-06-26 13:45:19,659 INFO ui.main_window — Escanear Bluetooth — no implementado
+2026-06-26 13:45:21,913 INFO ui.main_window — Escanear WiFi — no implementado
+2026-06-26 13:51:39,345 INFO ui.main_window — Escanear Bluetooth — no implementado
+2026-06-26 13:51:40,043 INFO ui.main_window — Escanear Bluetooth — no implementado
+2026-06-26 13:51:40,533 INFO ui.main_window — Escanear WiFi — no implementado
+2026-06-26 13:58:23,224 INFO __main__ — Cerrando FoT Estación Base
+2026-06-26 13:58:23,852 INFO __main__ — FoT Estación Base cerrada

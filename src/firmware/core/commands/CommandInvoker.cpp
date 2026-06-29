@@ -15,7 +15,7 @@ bool CommandInvoker::enqueue(ICommand* cmd) {
     return true;
 }
 
-bool CommandInvoker::executeNext(SketchBase& ctx) {
+bool CommandInvoker::executeNext(SensorSketch& ctx) {
     if (_count == 0) return false;
 
     ICommand* cmd = _queue[_head];
@@ -31,7 +31,7 @@ bool CommandInvoker::executeNext(SketchBase& ctx) {
     return false;
 }
 
-bool CommandInvoker::executeImmediate(ICommand* cmd, SketchBase& ctx) {
+bool CommandInvoker::executeImmediate(ICommand* cmd, SensorSketch& ctx) {
     if (!cmd) return false;
     bool ok = cmd->execute(ctx);
     delete cmd;

@@ -22,8 +22,8 @@ class RegisterDialog(ctk.CTkToplevel):
         allow_admin_creation: True si se permite crear usuarios admin (solo admin logueado)
         """
         super().__init__(parent)
-        self.title("FoT — Crear cuenta")
-        self.geometry("800x600")
+        self.title("IoT — Crear cuenta")
+        self.geometry("600x600")
         self.resizable(False, False)
 
         self._auth_ctrl = auth_controller

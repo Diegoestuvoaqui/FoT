@@ -51,7 +51,7 @@ class SensorChart(ctk.CTkFrame):
         self._figure.patch.set_facecolor("#1c1c1c")
         self._ax = self._figure.add_subplot(111)
         self._ax.set_facecolor("#1c1c1c")
-        self._ax.tick_params(colors="white", labelcolor="white")  # ← estado inicial
+        self._ax.tick_params(colors="white", labelcolor="white")
         self._ax.yaxis.label.set_color("white")
         self._ax.xaxis.label.set_color("white")
 
@@ -62,17 +62,12 @@ class SensorChart(ctk.CTkFrame):
         self._hum_suelo = []
         self._hum_aire = []
         self._temp = []
-        self._umbral_min = None
-        self._umbral_max = None
 
-    def update_data(self, timestamps, hum_suelo, hum_aire, temp,
-                    umbral_min=None, umbral_max=None):
+    def update_data(self, timestamps, hum_suelo, hum_aire, temp):
         self._timestamps = timestamps
         self._hum_suelo = hum_suelo
         self._hum_aire = hum_aire
         self._temp = temp
-        self._umbral_min = umbral_min
-        self._umbral_max = umbral_max
         self._draw_chart()
 
     def _on_range_changed(self):
@@ -82,7 +77,7 @@ class SensorChart(ctk.CTkFrame):
         self._ax.clear()
         self._ax.set_facecolor("#1c1c1c")
 
-        # Restaurar colores tras clear() — matplotlib los resetea al default
+        # Restaurar colores tras clear()
         self._ax.tick_params(colors="white", labelcolor="white", labelsize=8)
         self._ax.yaxis.label.set_color("white")
         self._ax.xaxis.label.set_color("white")
@@ -117,13 +112,6 @@ class SensorChart(ctk.CTkFrame):
             self._ax.plot(ts, ha, label="Hum. aire (%)", color="#3B82F6")
             self._ax.plot(ts, tp, label="Temp. (°C)", color="#EF4444")
 
-        if self._umbral_min is not None and ts:
-            self._ax.axhline(y=self._umbral_min, color="orange",
-                             linestyle="--", label="Umbral mín")
-        if self._umbral_max is not None and ts:
-            self._ax.axhline(y=self._umbral_max, color="red",
-                             linestyle="--", label="Umbral máx")
-
         for spine in self._ax.spines.values():
             spine.set_edgecolor("#3F3F3F")
 
@@ -133,8 +121,6 @@ class SensorChart(ctk.CTkFrame):
         self._ax.grid(True, alpha=0.2, color="#3F3F3F")
         self._figure.autofmt_xdate()
 
-        # Volver a aplicar color blanco después de autofmt_xdate()
-        # ya que también puede resetear las etiquetas del eje X
         for label in self._ax.get_xticklabels() + self._ax.get_yticklabels():
             label.set_color("white")
 

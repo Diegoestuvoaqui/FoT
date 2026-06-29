@@ -2,6 +2,7 @@
 #ifndef COMMAND_INVOKER_H
 #define COMMAND_INVOKER_H
 
+#include <stdint.h>
 #include "ICommand.h"
 
 #define MAX_COMMAND_QUEUE 8
@@ -16,27 +17,12 @@ private:
 public:
     CommandInvoker();
 
-    /**
-     * Encola un comando para ejecución posterior.
-     * @return true si se encoló, false si cola llena
-     */
     bool enqueue(ICommand* cmd);
 
-    /**
-     * Ejecuta el siguiente comando de la cola.
-     * @param ctx Sketch sobre el que ejecutar
-     * @return true si ejecutó algo
-     */
-    bool executeNext(SketchBase& ctx);
+    bool executeNext(SensorSketch& ctx);
 
-    /**
-     * Ejecuta inmediatamente (sin cola).
-     */
-    static bool executeImmediate(ICommand* cmd, SketchBase& ctx);
+    static bool executeImmediate(ICommand* cmd, SensorSketch& ctx);
 
-    /**
-     * Limpia la cola (libera memoria).
-     */
     void clear();
 
     bool isEmpty() const { return _count == 0; }

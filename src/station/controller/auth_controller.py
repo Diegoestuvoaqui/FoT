@@ -8,12 +8,6 @@ logger = logging.getLogger(__name__)
 
 
 class AuthController:
-    """
-    Adaptador entre la UI (LoginDialog/RegisterDialog) y AuthService.
-    Traduce interacciones del usuario en llamadas al servicio.
-    Devuelve resultados; la UI decide cómo mostrar errores.
-    """
-
     def __init__(self, auth_service: AuthService):
         self._service = auth_service
 
@@ -21,20 +15,12 @@ class AuthController:
     # Login
     # ------------------------------------------------------------------
     def login(self, username: str, password: str) -> tuple[bool, User | str]:
-        """
-        Intenta autenticar un usuario.
-        Retorna (éxito, User) o (False, mensaje_error).
-        """
         return self._service.login(username, password)
 
     # ------------------------------------------------------------------
     # Registro
     # ------------------------------------------------------------------
     def register(self, username: str, password: str, role: str = "user") -> tuple[bool, str]:
-        """
-        Registra un nuevo usuario.
-        Retorna (éxito, mensaje_error).
-        """
         return self._service.register(username, password, role)
 
     # ------------------------------------------------------------------
@@ -46,6 +32,12 @@ class AuthController:
     def delete_user(self, requesting_user: User, target_user_id: int) -> tuple[bool, str]:
         return self._service.delete_user(requesting_user, target_user_id)
 
+    def reset_password(self, requesting_user: User, target_user_id: int) -> tuple[bool, str]:
+        return self._service.reset_password(requesting_user, target_user_id)
+
+    def toggle_user_active(self, requesting_user: User, target_user_id: int, active: bool) -> tuple[bool, str]:
+        return self._service.toggle_user_active(requesting_user, target_user_id, active)
+
     # ------------------------------------------------------------------
     # Cambio de contraseña
     # ------------------------------------------------------------------
@@ -56,16 +48,9 @@ class AuthController:
     # Utilidades
     # ------------------------------------------------------------------
     def ensure_admin_exists(self) -> None:
-        """Crea admin por defecto si no hay usuarios."""
         self._service.ensure_admin_exists()
 
     def can_register(self, current_user: User | None = None) -> bool:
-        """
-        True si se permite registrar nuevos usuarios.
-        - Sin usuarios: cualquiera puede registrar (primer admin)
-        - Con admin logueado: solo admin puede registrar
-        """
         if current_user is None:
-            # No hay sesión: permitir solo si no hay usuarios
             return not self._service._db.user_exists()
         return current_user.is_admin()

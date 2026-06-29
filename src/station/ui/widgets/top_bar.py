@@ -1,13 +1,11 @@
+# ui/widgets/top_bar.py
 """
-ui/widgets/top_bar.py
 Barra superior fija: logo, indicadores de conexión y campana de notificaciones.
 
 Uso:
-    bar = TopBar(root, on_bell_click=lambda: ...)
-    bar.pack(side="top", fill="x")
+    bar = TopBar(root, notification_manager=mgr, on_bell_click=lambda: ...)
     bar.update_mqtt_status(connected=True)
     bar.update_boards_count(3)
-    bar.update_notification_count(2)
 """
 from __future__ import annotations
 
@@ -28,13 +26,14 @@ class TopBar(ctk.CTkFrame):
     Barra horizontal en la parte superior de la ventana.
 
     Columnas:
-        Izquierda  — logo "FoT" + subtítulo
-        Derecha    — estado MQTT | placas activas | campana
+        Izquierda  — logo "IoT" + subtítulo
+        Derecha    — estado MQTT local | placas activas | campana notificaciones
     """
 
     def __init__(
             self,
             master,
+            notification_manager=None,
             on_bell_click: Optional[Callable[[], None]] = None,
             **kwargs,
     ) -> None:
@@ -43,11 +42,16 @@ class TopBar(ctk.CTkFrame):
         kwargs.setdefault("fg_color", BG_TOPBAR)
         super().__init__(master, **kwargs)
 
-        self.pack_propagate(False)  # respetar el height fijo
+        self.pack_propagate(False)
+        self._notif_mgr = notification_manager
         self._on_bell_click = on_bell_click
         self._notification_count = 0
 
         self._build()
+
+        # Registrar observer para actualizar badge automáticamente
+        if self._notif_mgr:
+            self._notif_mgr.add_observer(self._update_badge)
 
     # ------------------------------------------------------------------
     # Construcción
@@ -60,7 +64,7 @@ class TopBar(ctk.CTkFrame):
 
         self._logo = ctk.CTkLabel(
             left,
-            text="FoT",
+            text="IoT",
             font=FONT_LOGO,
             text_color=COLORS["accent"],
         )
@@ -106,7 +110,6 @@ class TopBar(ctk.CTkFrame):
             fg_color=COLORS["badge_error"],
             text_color="white",
         )
-        # Se muestra solo cuando count > 0 (gestionado en update_notification_count)
 
         # Separador
         _separator(right)
@@ -123,7 +126,7 @@ class TopBar(ctk.CTkFrame):
 
         self._boards_label = ctk.CTkLabel(
             right,
-            text="0 placas activas",
+            text="0 placas",
             font=FONT_SMALL,
             text_color=("gray30", "gray70"),
         )
@@ -132,10 +135,10 @@ class TopBar(ctk.CTkFrame):
         # Separador
         _separator(right)
 
-        # Estado del servidor MQTT
+        # Estado del broker MQTT local
         self._mqtt_text = ctk.CTkLabel(
             right,
-            text="Sin conexión al servidor",
+            text="Broker local: detenido",
             font=FONT_SMALL,
             text_color=("gray30", "gray70"),
         )
@@ -155,18 +158,23 @@ class TopBar(ctk.CTkFrame):
     # ------------------------------------------------------------------
 
     def update_mqtt_status(self, connected: bool) -> None:
-        """Actualizar indicador de conexión al broker MQTT."""
+        """Actualizar indicador de conexión al broker MQTT local."""
         color = COLORS["connected"] if connected else COLORS["disconnected"]
-        text = "Servidor conectado" if connected else "Sin conexión al servidor"
+        text = "Broker local: activo" if connected else "Broker local: detenido"
         self._mqtt_dot.configure(text_color=color)
         self._mqtt_text.configure(text=text)
 
     def update_boards_count(self, count: int) -> None:
         """Actualizar contador de placas Arduino activas."""
-        plural = "s" if count != 1 else ""
-        self._boards_label.configure(text=f"{count} placa{plural} activa{plural}")
+        self._boards_label.configure(text=f"{count} placa{'s' if count != 1 else ''}")
         color = COLORS["connected"] if count > 0 else COLORS["unknown"]
         self._boards_dot.configure(text_color=color)
+
+    def _update_badge(self) -> None:
+        """Callback del NotificationManager para actualizar el badge."""
+        if self._notif_mgr:
+            count = self._notif_mgr.get_unread_count()
+            self.update_notification_count(count)
 
     def update_notification_count(self, count: int) -> None:
         """
@@ -189,8 +197,16 @@ class TopBar(ctk.CTkFrame):
     # ------------------------------------------------------------------
 
     def _handle_bell(self) -> None:
+        if self._notif_mgr:
+            self._notif_mgr.mark_all_read()
         if callable(self._on_bell_click):
             self._on_bell_click()
+
+    def destroy(self):
+        """Limpieza al destruir el widget."""
+        if self._notif_mgr:
+            self._notif_mgr.remove_observer(self._update_badge)
+        super().destroy()
 
 
 # ---------------------------------------------------------------------------

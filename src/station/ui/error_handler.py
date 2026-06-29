@@ -7,7 +7,7 @@ Uso:
     from ui.error_handler import ErrorCode, ErrorHandler
 
     error_handler = ErrorHandler()
-    error_handler.show(ErrorCode.ERR_MODE_CHANGE, parent, parcela_id=parcela_id)
+    error_handler.show(ErrorCode.ERR_SENSOR_READ, parent, sensor="DHT11", placa="board-01")
 """
 from __future__ import annotations
 
@@ -24,14 +24,6 @@ from ui.theme import FONT_NORMAL, FONT_SMALL
 # Códigos de error
 # ---------------------------------------------------------------------------
 class ErrorCode(Enum):
-    ERR_MODE_CHANGE = "ERR_MODE_CHANGE"
-    ERR_IRRIGATE = "ERR_IRRIGATE"
-    ERR_THRESHOLDS = "ERR_THRESHOLDS"
-    ERR_ADD_PARCELA = "ERR_ADD_PARCELA"
-    ERR_DUPLICATE_PARCELA = "ERR_DUPLICATE_PARCELA"
-    ERR_MODIFY_PARCELA = "ERR_MODIFY_PARCELA"
-    ERR_DELETE_PARCELA = "ERR_DELETE_PARCELA"
-    ERR_SNAPSHOT = "ERR_SNAPSHOT"
     ERR_SENSOR_READ = "ERR_SENSOR_READ"
     ERR_MQTT_CONN = "ERR_MQTT_CONN"
     ERR_USB_CONN = "ERR_USB_CONN"
@@ -39,44 +31,12 @@ class ErrorCode(Enum):
     ERR_FIRMWARE_UPLOAD = "ERR_FIRMWARE_UPLOAD"
     ERR_VAR_READ = "ERR_VAR_READ"
     ERR_DB_WRITE = "ERR_DB_WRITE"
-    ERR_ID_GENERATION = "ERR_ID_GENERATION"
 
 
 # ---------------------------------------------------------------------------
 # Mensajes en español (pueden contener placeholders para .format())
 # ---------------------------------------------------------------------------
 MESSAGES: dict[ErrorCode, str] = {
-    ErrorCode.ERR_MODE_CHANGE: (
-        "No se pudo cambiar el modo de operación. "
-        "Verifica la conexión con la parcela."
-    ),
-    ErrorCode.ERR_IRRIGATE: (
-        "No se pudo activar el riego. "
-        "La parcela puede estar desconectada o en estado de fallo."
-    ),
-    ErrorCode.ERR_THRESHOLDS: (
-        "No se pudieron guardar los umbrales. "
-        "Verifica que los valores sean números válidos (0–100)."
-    ),
-    ErrorCode.ERR_ADD_PARCELA: (
-        "No se pudo crear la parcela. "
-        "El nombre no puede estar vacío."
-    ),
-    ErrorCode.ERR_DUPLICATE_PARCELA: (
-        "Ya existe una parcela con ese ID o nombre. "
-        "Usa un identificador diferente."
-    ),
-    ErrorCode.ERR_MODIFY_PARCELA: (
-        "No se pudo modificar la parcela. "
-        "Es posible que haya un problema con la base de datos."
-    ),
-    ErrorCode.ERR_DELETE_PARCELA: (
-        "No se pudo eliminar la parcela. "
-        "Desasigna la placa antes de eliminarla."
-    ),
-    ErrorCode.ERR_SNAPSHOT: (
-        "No se pudo guardar la instantánea de configuración."
-    ),
     ErrorCode.ERR_SENSOR_READ: (
         "Error al leer el sensor {sensor} en la placa {placa}. "
         "Verifica el cableado."
@@ -97,14 +57,10 @@ MESSAGES: dict[ErrorCode, str] = {
         "Revisa que la placa esté en modo de carga."
     ),
     ErrorCode.ERR_VAR_READ: (
-        "No se pudo obtener el valor de {variable} en {parcela}."
+        "No se pudo obtener el valor de {variable} en {placa}."
     ),
     ErrorCode.ERR_DB_WRITE: (
         "Los cambios no se guardaron correctamente en la base de datos."
-    ),
-    ErrorCode.ERR_ID_GENERATION: (
-        "No se pudo generar un ID único para la parcela. "
-        "Intenta de nuevo."
     ),
 }
 
@@ -122,8 +78,6 @@ class ErrorDialog(ctk.CTkToplevel):
         super().__init__(parent)
         self.title("Error")
         self.resizable(False, False)
-        # SIN grab_set() aquí — se difiere hasta que la ventana sea visible
-        # (evita _tkinter.TclError: grab failed: window not viewable)
 
         # Configuración mínima de grid
         self.grid_columnconfigure(0, weight=1)
@@ -134,7 +88,7 @@ class ErrorDialog(ctk.CTkToplevel):
         frame.grid(row=0, column=0, padx=20, pady=20, sticky="nsew")
         frame.grid_columnconfigure(0, weight=1)
 
-        # Icono (texto "⚠" como sustituto rápido)
+        # Icono
         ctk.CTkLabel(frame, text="⚠", font=("Roboto", 32),
                      text_color="#F59E0B").grid(row=0, column=0, pady=(10, 5))
 
@@ -153,14 +107,13 @@ class ErrorDialog(ctk.CTkToplevel):
 
         # Esperar a que la ventana sea visible antes de capturar el foco
         self.update()
-        self.after(10, self._set_grab)  # type: ignore[arg-type]
+        self.after(10, self._set_grab)
         self.wait_window()
 
     def _set_grab(self) -> None:
         try:
             self.grab_set()
         except tk.TclError:
-            # La ventana puede haberse cerrado antes de que el after() dispare
             pass
 
 

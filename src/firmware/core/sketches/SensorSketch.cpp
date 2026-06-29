@@ -32,10 +32,10 @@ void SensorSketch::addSensor(ISensor* sensor) {
 }
 
 void SensorSketch::readAndSend() {
-    StaticJsonDocument<256> doc;
+    JsonDocument doc;
     doc["ts"] = millis();
 
-    JsonObject data = doc.createNestedObject("data");
+    JsonObject data = doc["data"].to<JsonObject>();
     bool anyValid = false;
 
     for (uint8_t i = 0; i < _sensorCount; i++) {
@@ -44,7 +44,7 @@ void SensorSketch::readAndSend() {
 
         float val = s->read();
         if (s->isValid()) {
-            JsonObject reading = data.createNestedObject(s->getName());
+            JsonObject reading = data[s->getName()].to<JsonObject>();
             reading["value"] = val;
             reading["unit"] = s->getUnit();
             anyValid = true;

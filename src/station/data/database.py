@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import threading
 from datetime import datetime
@@ -5,15 +6,14 @@ from datetime import datetime
 
 class Database:
 
-    def __init__(self, db_path: str = "data/fot.db"):
+    def __init__(self, db_path: str = "data/iot.db"):
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._lock = threading.Lock()
-        # Activar claves foráneas en cada conexión
         self._conn.execute("PRAGMA foreign_keys = ON")
 
     # --------------------------------------------------------------------------
-    # Inicialización del esquema
+    # Inicialización
     # --------------------------------------------------------------------------
     def initialize(self) -> None:
         with self._lock:
@@ -21,35 +21,37 @@ class Database:
             cur.executescript("""
                 PRAGMA foreign_keys = ON;
 
-                -- ============================================================
-                -- USUARIOS
-                -- ============================================================
                 CREATE TABLE IF NOT EXISTS usuarios (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     username TEXT UNIQUE NOT NULL,
                     password_hash TEXT NOT NULL,
                     role TEXT NOT NULL DEFAULT 'user',
-                    created_at TEXT DEFAULT (datetime('now'))
+                    is_active INTEGER DEFAULT 1, 
+                    must_change_password INTEGER DEFAULT 0, -- NUEVO: forzar cambio
+                    created_at TEXT DEFAULT (datetime('now')),
+                    last_login TEXT
                 );
 
-                -- ============================================================
-                -- BOARDS (reemplaza dispositivos)
-                -- ============================================================
                 CREATE TABLE IF NOT EXISTS boards (
                     id TEXT PRIMARY KEY,
                     usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
-                    parcela_id TEXT REFERENCES parcelas(id) ON DELETE SET NULL,
                     conn TEXT DEFAULT 'usb',
                     port TEXT,
-                    firmware_version TEXT,
+                    sketch_id TEXT,
+                    sketch_name TEXT,
+                    sketch_version TEXT DEFAULT '1.0',
                     status TEXT DEFAULT 'Sin asignar',
                     last_seen TEXT,
-                    created_at TEXT DEFAULT (datetime('now'))
+                    created_at TEXT DEFAULT (datetime('now')),
+                    hwid TEXT,
+                    vid INTEGER,
+                    pid INTEGER,
+                    serial_number TEXT,
+                    manufacturer TEXT,
+                    product TEXT,
+                    location TEXT
                 );
 
-                -- ============================================================
-                -- SENSORES CONFIGURADOS POR BOARD (declarativo, no auto-detectado)
-                -- ============================================================
                 CREATE TABLE IF NOT EXISTS boards_sensors (
                     board_id TEXT REFERENCES boards(id) ON DELETE CASCADE,
                     sensor_type TEXT NOT NULL,
@@ -59,48 +61,25 @@ class Database:
                     PRIMARY KEY (board_id, sensor_type)
                 );
 
-                -- ============================================================
-                -- PARCELAS
-                -- ============================================================
-                CREATE TABLE IF NOT EXISTS parcelas (
-                    id TEXT PRIMARY KEY,
-                    usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
-                    name TEXT NOT NULL,
-                    umbral_min REAL DEFAULT 30.0,
-                    umbral_max REAL DEFAULT 70.0,
-                    modo TEXT DEFAULT 'manual',
-                    board_id TEXT REFERENCES boards(id) ON DELETE SET NULL,
-                    created_at TEXT DEFAULT (datetime('now'))
-                );
-
-                -- ============================================================
-                -- LECTURAS
-                -- ============================================================
                 CREATE TABLE IF NOT EXISTS lecturas (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    parcela_id TEXT NOT NULL REFERENCES parcelas(id) ON DELETE CASCADE,
-                    hum_suelo REAL,
-                    hum_aire REAL,
-                    temp REAL,
-                    relay_state INTEGER,
+                    board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+                    sensor_type TEXT NOT NULL,
+                    valor REAL,
+                    unidad TEXT,
+                    raw_data TEXT,
                     ts_arduino INTEGER,
                     ts_base TEXT DEFAULT (datetime('now'))
                 );
 
-                -- ============================================================
-                -- EVENTOS
-                -- ============================================================
                 CREATE TABLE IF NOT EXISTS eventos (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    parcela_id TEXT NOT NULL REFERENCES parcelas(id) ON DELETE CASCADE,
+                    board_id TEXT REFERENCES boards(id) ON DELETE CASCADE,
                     tipo TEXT NOT NULL,
                     descripcion TEXT,
                     ts TEXT DEFAULT (datetime('now'))
                 );
 
-                -- ============================================================
-                -- SNAPSHOTS
-                -- ============================================================
                 CREATE TABLE IF NOT EXISTS configuracion_snapshots (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
@@ -109,22 +88,17 @@ class Database:
                     ts TEXT DEFAULT (datetime('now'))
                 );
 
-                -- ============================================================
-                -- ÍNDICES
-                -- ============================================================
-                CREATE INDEX IF NOT EXISTS idx_lecturas_parcela_ts 
-                    ON lecturas(parcela_id, ts_base);
-                CREATE INDEX IF NOT EXISTS idx_eventos_parcela_ts 
-                    ON eventos(parcela_id, ts);
-                CREATE INDEX IF NOT EXISTS idx_boards_usuario 
+                CREATE INDEX IF NOT EXISTS idx_lecturas_board_ts
+                    ON lecturas(board_id, ts_base);
+                CREATE INDEX IF NOT EXISTS idx_lecturas_sensor
+                    ON lecturas(board_id, sensor_type);
+                CREATE INDEX IF NOT EXISTS idx_eventos_board_ts
+                    ON eventos(board_id, ts);
+                CREATE INDEX IF NOT EXISTS idx_boards_usuario
                     ON boards(usuario_id);
-                CREATE INDEX IF NOT EXISTS idx_boards_parcela 
-                    ON boards(parcela_id);
-                CREATE INDEX IF NOT EXISTS idx_parcelas_usuario 
-                    ON parcelas(usuario_id);
-                CREATE INDEX IF NOT EXISTS idx_parcelas_board 
-                    ON parcelas(board_id);
-                CREATE INDEX IF NOT EXISTS idx_snapshots_usuario 
+                CREATE INDEX IF NOT EXISTS idx_boards_sketch
+                    ON boards(sketch_id);
+                CREATE INDEX IF NOT EXISTS idx_snapshots_usuario
                     ON configuracion_snapshots(usuario_id);
             """)
             self._conn.commit()
@@ -133,7 +107,6 @@ class Database:
     # USUARIOS
     # --------------------------------------------------------------------------
     def create_user(self, username: str, password_hash: str, role: str = "user") -> int:
-        """Crea un usuario. Retorna el id generado."""
         with self._lock:
             cur = self._conn.execute(
                 "INSERT INTO usuarios (username, password_hash, role) VALUES (?, ?, ?)",
@@ -177,7 +150,6 @@ class Database:
             self._conn.commit()
 
     def user_exists(self) -> bool:
-        """True si hay al menos un usuario en la BD."""
         with self._lock:
             cur = self._conn.execute("SELECT 1 FROM usuarios LIMIT 1")
             return cur.fetchone() is not None
@@ -186,28 +158,42 @@ class Database:
     # BOARDS
     # --------------------------------------------------------------------------
     def save_board(self, board: dict) -> None:
-        """UPSERT de board."""
+        if not board.get("id"):
+            raise ValueError("board['id'] es obligatorio")
         with self._lock:
             self._conn.execute(
                 """
-                INSERT INTO boards (id, usuario_id, parcela_id, conn, port, 
-                                    firmware_version, status, last_seen)
-                VALUES (:id, :usuario_id, :parcela_id, :conn, :port,
-                        :firmware_version, :status, :last_seen)
+                INSERT INTO boards (
+                    id, usuario_id, conn, port, sketch_id, sketch_name,
+                    sketch_version, status, last_seen,
+                    hwid, vid, pid, serial_number, manufacturer, product, location
+                ) VALUES (
+                    :id, :usuario_id, :conn, :port, :sketch_id, :sketch_name,
+                    :sketch_version, :status, :last_seen,
+                    :hwid, :vid, :pid, :serial_number, :manufacturer, :product, :location
+                )
                 ON CONFLICT(id) DO UPDATE SET
                     usuario_id = excluded.usuario_id,
-                    parcela_id = excluded.parcela_id,
                     conn = excluded.conn,
                     port = excluded.port,
-                    firmware_version = excluded.firmware_version,
+                    sketch_id = excluded.sketch_id,
+                    sketch_name = excluded.sketch_name,
+                    sketch_version = excluded.sketch_version,
                     status = excluded.status,
-                    last_seen = excluded.last_seen
+                    last_seen = excluded.last_seen,
+                    hwid = excluded.hwid,
+                    vid = excluded.vid,
+                    pid = excluded.pid,
+                    serial_number = excluded.serial_number,
+                    manufacturer = excluded.manufacturer,
+                    product = excluded.product,
+                    location = excluded.location
                 """,
                 board,
             )
             self._conn.commit()
 
-    def get_board(self, board_id: str) -> dict | None:
+    def get_board_by_id(self, board_id: str) -> dict | None:
         with self._lock:
             cur = self._conn.execute(
                 "SELECT * FROM boards WHERE id = ?", (board_id,)
@@ -215,18 +201,28 @@ class Database:
             row = cur.fetchone()
             return dict(row) if row else None
 
-    def get_boards_by_user(self, usuario_id: int | None) -> list[dict]:
-        """Si usuario_id es None, retorna boards sin dueño."""
+    def get_unclaimed_boards(self) -> list[dict]:
+        """Boards sin usuario asignado."""
         with self._lock:
-            if usuario_id is None:
-                cur = self._conn.execute(
-                    "SELECT * FROM boards WHERE usuario_id IS NULL ORDER BY created_at"
-                )
-            else:
-                cur = self._conn.execute(
-                    "SELECT * FROM boards WHERE usuario_id = ? ORDER BY created_at",
-                    (usuario_id,),
-                )
+            cur = self._conn.execute(
+                "SELECT * FROM boards WHERE usuario_id IS NULL ORDER BY created_at"
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+    def get_boards_by_user_id(self, usuario_id: int) -> list[dict]:
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT * FROM boards WHERE usuario_id = ? ORDER BY created_at",
+                (usuario_id,),
+            )
+            return [dict(row) for row in cur.fetchall()]
+
+    def get_boards_by_sketch(self, sketch_id: str) -> list[dict]:
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT * FROM boards WHERE sketch_id = ? ORDER BY created_at",
+                (sketch_id,),
+            )
             return [dict(row) for row in cur.fetchall()]
 
     def get_all_boards(self) -> list[dict]:
@@ -249,7 +245,7 @@ class Database:
             self._conn.commit()
 
     # --------------------------------------------------------------------------
-    # BOARDS_SENSORS (configuración declarativa)
+    # BOARDS_SENSORS
     # --------------------------------------------------------------------------
     def save_board_sensor(self, board_id: str, sensor_type: str, pin: str,
                           enabled: int = 1, config_json: str | None = None) -> None:
@@ -277,97 +273,126 @@ class Database:
     # --------------------------------------------------------------------------
     # LECTURAS
     # --------------------------------------------------------------------------
-    def save_reading(self, parcela_id: str, data: dict) -> None:
+    def save_reading(self, board_id: str, sensor_type: str, valor: float,
+                     unidad: str, raw_data: str | None = None,
+                     ts_arduino: int | None = None) -> None:
         with self._lock:
             self._conn.execute(
                 """
-                INSERT INTO lecturas (parcela_id, hum_suelo, hum_aire, temp, relay_state, ts_arduino)
+                INSERT INTO lecturas (board_id, sensor_type, valor, unidad, raw_data, ts_arduino)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (
-                    parcela_id,
-                    data.get("hum_suelo"),
-                    data.get("hum_aire"),
-                    data.get("temp"),
-                    data.get("relay_state"),
-                    data.get("ts"),
-                ),
+                (board_id, sensor_type, valor, unidad, raw_data, ts_arduino),
             )
             self._conn.commit()
 
-    def purge_old_readings(self, days: int = 30) -> None:
+    def save_reading_batch(self, board_id: str, data: dict, ts_arduino: int | None = None) -> None:
         with self._lock:
-            self._conn.execute(
-                "DELETE FROM lecturas WHERE ts_base < datetime('now', ?)",
-                (f"-{days} days",),
-            )
+            raw_json = json.dumps(data, ensure_ascii=False) if not isinstance(data, str) else data
+            for sensor_name, sensor_data in data.items():
+                if isinstance(sensor_data, dict) and "value" in sensor_data:
+                    self._conn.execute(
+                        """
+                        INSERT INTO lecturas (board_id, sensor_type, valor, unidad, raw_data, ts_arduino)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            board_id,
+                            sensor_name,
+                            sensor_data["value"],
+                            sensor_data.get("unit", ""),
+                            raw_json,
+                            ts_arduino,
+                        ),
+                    )
             self._conn.commit()
 
-    # --------------------------------------------------------------------------
-    # EVENTOS
-    # --------------------------------------------------------------------------
-    def save_event(self, parcela_id: str, tipo: str, descripcion: str = "") -> None:
-        with self._lock:
-            self._conn.execute(
-                """
-                INSERT INTO eventos (parcela_id, tipo, descripcion)
-                VALUES (?, ?, ?)
-                """,
-                (parcela_id, tipo, descripcion),
-            )
-            self._conn.commit()
+    def get_readings(self, board_id: str, sensor_type: str | None = None,
+                     limit: int = 100,
+                     start: datetime | None = None,
+                     end: datetime | None = None) -> list[dict]:
+        query = "SELECT * FROM lecturas WHERE board_id = ?"
+        params: list = [board_id]
 
-    # --------------------------------------------------------------------------
-    # PARCELAS
-    # --------------------------------------------------------------------------
-    def get_parcelas(self, usuario_id: int | None = None) -> list[dict]:
-        """Si usuario_id es None, retorna todas (para admin)."""
+        if sensor_type:
+            query += " AND sensor_type = ?"
+            params.append(sensor_type)
+        if start:
+            query += " AND ts_base >= ?"
+            params.append(start.strftime("%Y-%m-%d"))
+        if end:
+            query += " AND ts_base <= ?"
+            params.append(end.strftime("%Y-%m-%d"))
+
+        query += " ORDER BY ts_base DESC, id DESC LIMIT ?"
+        params.append(limit)
+
         with self._lock:
-            if usuario_id is None:
-                cur = self._conn.execute(
-                    "SELECT * FROM parcelas ORDER BY created_at"
-                )
-            else:
-                cur = self._conn.execute(
-                    "SELECT * FROM parcelas WHERE usuario_id = ? ORDER BY created_at",
-                    (usuario_id,),
-                )
+            cur = self._conn.execute(query, params)
             return [dict(row) for row in cur.fetchall()]
 
-    def save_parcela(self, parcela: dict) -> None:
-        """UPSERT completo con usuario_id y board_id."""
-        with self._lock:
-            self._conn.execute(
-                """
-                INSERT INTO parcelas (id, usuario_id, name, umbral_min, umbral_max, modo, board_id)
-                VALUES (:id, :usuario_id, :name, :umbral_min, :umbral_max, :modo, :board_id)
-                ON CONFLICT(id) DO UPDATE SET
-                    usuario_id = excluded.usuario_id,
-                    name = excluded.name,
-                    umbral_min = excluded.umbral_min,
-                    umbral_max = excluded.umbral_max,
-                    modo = excluded.modo,
-                    board_id = excluded.board_id
-                """,
-                parcela,
-            )
-            self._conn.commit()
-
-    def get_parcela(self, parcela_id: str) -> dict | None:
+    def get_latest_reading(self, board_id: str, sensor_type: str) -> dict | None:
         with self._lock:
             cur = self._conn.execute(
-                "SELECT * FROM parcelas WHERE id = ?", (parcela_id,)
+                """SELECT * FROM lecturas
+                   WHERE board_id = ? AND sensor_type = ?
+                   ORDER BY ts_base DESC, id DESC LIMIT 1""",
+                (board_id, sensor_type),
             )
             row = cur.fetchone()
             return dict(row) if row else None
 
-    def delete_parcela(self, parcela_id: str) -> None:
+    def purge_old_readings(self, days: int = 30) -> int:
+        """Retorna cantidad de filas eliminadas."""
         with self._lock:
-            self._conn.execute(
-                "DELETE FROM parcelas WHERE id = ?",
-                (parcela_id,)
+            cur = self._conn.execute(
+                "DELETE FROM lecturas WHERE ts_base < datetime('now', ?)",
+                (f"-{days} days",),
             )
             self._conn.commit()
+            return cur.rowcount
+
+    # --------------------------------------------------------------------------
+    # EVENTOS
+    # --------------------------------------------------------------------------
+    def save_event(self, board_id: str | None, tipo: str, descripcion: str = "") -> None:
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO eventos (board_id, tipo, descripcion)
+                VALUES (?, ?, ?)
+                """,
+                (board_id, tipo, descripcion),
+            )
+            self._conn.commit()
+
+    def get_events(self, board_id: str | None = None,
+                   limit: int = 50,
+                   start: datetime | None = None,
+                   end: datetime | None = None) -> list[dict]:
+        query = "SELECT * FROM eventos"
+        params: list = []
+        conditions = []
+
+        if board_id:
+            conditions.append("board_id = ?")
+            params.append(board_id)
+        if start:
+            conditions.append("ts >= ?")
+            params.append(start.strftime("%Y-%m-%d"))
+        if end:
+            conditions.append("ts <= ?")
+            params.append(end.strftime("%Y-%m-%d"))
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += " ORDER BY ts DESC, id DESC LIMIT ?"
+        params.append(limit)
+
+        with self._lock:
+            cur = self._conn.execute(query, params)
+            return [dict(row) for row in cur.fetchall()]
 
     # --------------------------------------------------------------------------
     # SNAPSHOTS
@@ -405,44 +430,29 @@ class Database:
             row = cur.fetchone()
             return dict(row) if row else None
 
-    # --------------------------------------------------------------------------
-    # LECTURAS / EVENTOS (filtrados)
-    # --------------------------------------------------------------------------
-    def get_readings(self, parcela_id: str,
-                     limit: int = 100,
-                     start: datetime | None = None,
-                     end: datetime | None = None) -> list[dict]:
-        query = "SELECT * FROM lecturas WHERE parcela_id = ?"
-        params: list = [parcela_id]
-        if start:
-            query += " AND ts_base >= ?"
-            params.append(start.strftime("%Y-%m-%d"))
-        if end:
-            query += " AND ts_base <= ?"
-            params.append(end.strftime("%Y-%m-%d"))
-        query += " ORDER BY id DESC LIMIT ?"
-        params.append(limit)
+    def update_user_last_login(self, user_id: int) -> None:
         with self._lock:
-            cur = self._conn.execute(query, params)
-            return [dict(row) for row in cur.fetchall()]
+            self._conn.execute(
+                "UPDATE usuarios SET last_login = datetime('now') WHERE id = ?",
+                (user_id,),
+            )
+            self._conn.commit()
 
-    def get_events(self, parcela_id: str,
-                   limit: int = 50,
-                   start: datetime | None = None,
-                   end: datetime | None = None) -> list[dict]:
-        query = "SELECT * FROM eventos WHERE parcela_id = ?"
-        params: list = [parcela_id]
-        if start:
-            query += " AND ts >= ?"
-            params.append(start.strftime("%Y-%m-%d"))
-        if end:
-            query += " AND ts <= ?"
-            params.append(end.strftime("%Y-%m-%d"))
-        query += " ORDER BY id DESC LIMIT ?"
-        params.append(limit)
+    def set_must_change_password(self, user_id: int, must_change: bool) -> None:
         with self._lock:
-            cur = self._conn.execute(query, params)
-            return [dict(row) for row in cur.fetchall()]
+            self._conn.execute(
+                "UPDATE usuarios SET must_change_password = ? WHERE id = ?",
+                (1 if must_change else 0, user_id),
+            )
+            self._conn.commit()
+
+    def set_user_active(self, user_id: int, active: bool) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE usuarios SET is_active = ? WHERE id = ?",
+                (1 if active else 0, user_id),
+            )
+            self._conn.commit()
 
     # --------------------------------------------------------------------------
     # CIERRE

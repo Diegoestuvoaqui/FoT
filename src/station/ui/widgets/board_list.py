@@ -1,8 +1,8 @@
 """
-Lista de parcelas con indicadores de estado FSM, conexión y menú contextual.
+Lista de boards con indicadores de estado de conexión y menú contextual.
 Uso:
-    lista = ParcelaList(parent, on_select=callback, on_context_menu=callback)
-    lista.set_parcelas(parcelas)   # lista de objetos Parcela
+    lista = BoardList(parent, on_select=callback, on_context_menu=callback)
+    lista.set_boards(boards)   # lista de objetos Board
 """
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Optional
 
 import customtkinter as ctk
 
-from ui.theme import FSM_COLORS, CONN_COLORS, FONT_NORMAL, FONT_SMALL
+from ui.theme import CONN_COLORS, FONT_NORMAL, FONT_SMALL
 
 CONN_STATES = {
     "mqtt": "MQTT",
@@ -21,7 +21,7 @@ CONN_STATES = {
 }
 
 
-class ParcelaList(ctk.CTkScrollableFrame):
+class BoardList(ctk.CTkScrollableFrame):
     def __init__(
             self,
             master,
@@ -37,23 +37,23 @@ class ParcelaList(ctk.CTkScrollableFrame):
         self._on_select = on_select
         self._on_context_menu = on_context_menu
         self._selected_id: str | None = None
-        self._parcelas = []
+        self._boards = []
         self._row_frames: dict[str, ctk.CTkFrame] = {}
-        self._row_labels: dict[str, ctk.CTkLabel] = {}  # ← referencias a lbl_info
-        self._row_dots: dict[str, ctk.CTkLabel] = {}  # ← referencias a dot
+        self._row_labels: dict[str, ctk.CTkLabel] = {}
+        self._row_dots: dict[str, ctk.CTkLabel] = {}
 
     # ------------------------------------------------------------------
-    def set_parcelas(self, parcelas: list) -> None:
-        """Actualizar la lista completa de parcelas."""
+    def set_boards(self, boards: list) -> None:
+        """Actualizar la lista completa de boards."""
         self._clear_rows()
-        self._parcelas = parcelas
-        for i, parcela in enumerate(parcelas):
-            self._add_row(parcela, i)
+        self._boards = boards
+        for i, board in enumerate(boards):
+            self._add_row(board, i)
 
-    def update_parcela(self, parcela_id: str, **data) -> None:
+    def update_board(self, board_id: str, **data) -> None:
         """Actualizar visualmente una fila en concreto."""
-        if parcela_id in self._row_frames:
-            self._refresh_row(parcela_id, **data)
+        if board_id in self._row_frames:
+            self._refresh_row(board_id, **data)
 
     # ------------------------------------------------------------------
     def _clear_rows(self) -> None:
@@ -63,11 +63,11 @@ class ParcelaList(ctk.CTkScrollableFrame):
         self._row_labels.clear()
         self._row_dots.clear()
 
-    def _add_row(self, parcela, index: int) -> None:
-        pid = parcela.get_id()
-        name = parcela.get_name()
-        fsm = getattr(parcela, "fsm_state", "Idle")
-        conn = getattr(parcela, "connection", "none")
+    def _add_row(self, board, index: int) -> None:
+        bid = board.id
+        name = board.sketch_name or board.id
+        conn = getattr(board, "conn", "none")
+        status = getattr(board, "status", "Desconocida")
 
         frame = ctk.CTkFrame(
             self,
@@ -87,12 +87,12 @@ class ParcelaList(ctk.CTkScrollableFrame):
         )
         lbl_name.grid(row=0, column=0, padx=(10, 4), pady=(6, 0), sticky="w")
 
-        info_text = f"{fsm}  •  {CONN_STATES.get(conn, 'Sin conexión')}"
+        info_text = f"{status}  •  {CONN_STATES.get(conn, 'Sin conexión')}"
         lbl_info = ctk.CTkLabel(
             frame,
             text=info_text,
             font=FONT_SMALL,
-            text_color=FSM_COLORS.get(fsm, "#6B7280"),
+            text_color=CONN_COLORS.get("connected") if conn != "none" else "#6B7280",
             anchor="w",
         )
         lbl_info.grid(row=1, column=0, padx=(10, 4), pady=(0, 6), sticky="w")
@@ -116,42 +116,42 @@ class ParcelaList(ctk.CTkScrollableFrame):
             fg_color="transparent",
             hover_color=("gray80", "#2e2e2e"),
             font=("Roboto", 16),
-            command=lambda p=pid: self._handle_context_menu(p),
+            command=lambda b=bid: self._handle_context_menu(b),
         )
         btn_menu.grid(row=0, column=2, rowspan=2, padx=(0, 6), sticky="e")
 
         for w in (frame, lbl_name, lbl_info, dot):
-            w.bind("<Button-1>", lambda e, p=pid: self._handle_select(p))
+            w.bind("<Button-1>", lambda e, b=bid: self._handle_select(b))
 
-        self._row_frames[pid] = frame
-        self._row_labels[pid] = lbl_info  # ← guardar referencia
-        self._row_dots[pid] = dot  # ← guardar referencia
+        self._row_frames[bid] = frame
+        self._row_labels[bid] = lbl_info
+        self._row_dots[bid] = dot
 
-    def _refresh_row(self, parcela_id: str, **data) -> None:
-        fsm = data.get("fsm", "Idle")
+    def _refresh_row(self, board_id: str, **data) -> None:
         conn = data.get("connection", "none")
+        status = data.get("status", "Desconocida")
 
-        if parcela_id in self._row_labels:
-            info_text = f"{fsm}  •  {CONN_STATES.get(conn, 'Sin conexión')}"
-            self._row_labels[parcela_id].configure(
+        if board_id in self._row_labels:
+            info_text = f"{status}  •  {CONN_STATES.get(conn, 'Sin conexión')}"
+            self._row_labels[board_id].configure(
                 text=info_text,
-                text_color=FSM_COLORS.get(fsm, "#6B7280"),
+                text_color=CONN_COLORS.get("connected") if conn != "none" else "#6B7280",
             )
-        if parcela_id in self._row_dots:
+        if board_id in self._row_dots:
             dot_color = (CONN_COLORS.get("connected")
                          if conn != "none"
                          else CONN_COLORS.get("disconnected"))
-            self._row_dots[parcela_id].configure(text_color=dot_color)
+            self._row_dots[board_id].configure(text_color=dot_color)
 
     # ------------------------------------------------------------------
-    def _handle_select(self, parcela_id: str) -> None:
-        self._selected_id = parcela_id
-        for pid, frame in self._row_frames.items():
-            frame.configure(border_color="#22C55E" if pid == parcela_id else "#3F3F3F")
+    def _handle_select(self, board_id: str) -> None:
+        self._selected_id = board_id
+        for bid, frame in self._row_frames.items():
+            frame.configure(border_color="#22C55E" if bid == board_id else "#3F3F3F")
         if self._on_select:
-            self._on_select(parcela_id)
+            self._on_select(board_id)
 
-    def _handle_context_menu(self, parcela_id: str) -> None:
+    def _handle_context_menu(self, board_id: str) -> None:
         popup = ctk.CTkToplevel(self)
         popup.wm_overrideredirect(True)
         popup.attributes("-topmost", True)
@@ -170,12 +170,12 @@ class ParcelaList(ctk.CTkScrollableFrame):
         def _ver_detalle() -> None:
             _close()
             if self._on_context_menu:
-                self._on_context_menu(parcela_id, "detail")
+                self._on_context_menu(board_id, "detail")
 
         def _eliminar() -> None:
             _close()
             if self._on_context_menu:
-                self._on_context_menu(parcela_id, "delete")
+                self._on_context_menu(board_id, "delete")
 
         ctk.CTkButton(
             frame,
@@ -196,7 +196,7 @@ class ParcelaList(ctk.CTkScrollableFrame):
 
         ctk.CTkButton(
             frame,
-            text="🗑️  Eliminar parcela",
+            text="🗑️  Eliminar board",
             font=("Roboto", 12),
             anchor="w",
             width=180,

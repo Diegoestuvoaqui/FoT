@@ -6,14 +6,6 @@ def apply_theme() -> None:
     ctk.set_default_color_theme("green")
 
 
-# Colores de estado FSM
-FSM_COLORS = {
-    "Idle": "#6B7280",
-    "Monitoring": "#22C55E",
-    "Irrigating": "#3B82F6",
-    "Fault": "#EF4444",
-}
-
 # Colores de conexión
 CONN_COLORS = {
     "connected": "#22C55E",
@@ -54,7 +46,7 @@ DIVIDER = ("gray75", "#2e2e2e")
 
 # Items de navegación
 NAV_ITEMS = [
-    ("parcelas", "Parcelas", "Panel principal de parcelas"),
+    ("dht11", "DHT11", "Panel de lecturas DHT11"),
     ("arduinos", "Arduinos", "Gestor de placas Arduino"),
     ("exportar", "Exportar", "Exportar datos históricos"),
     ("ayuda", "Ayuda", "Ayuda del sistema"),
@@ -64,5 +56,5 @@ NAV_BOTTOM_ITEMS = [
     ("ajustes", "Ajustes", "Configuración general"),
 ]
 
-# Fuente para el logo (debe estar definida)
+# Fuente para el logo
 FONT_LOGO = ("Roboto", 20, "bold")

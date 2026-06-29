@@ -1,14 +1,14 @@
+# ui/widgets/status_bar.py
 """
-ui/widgets/status_bar.py
-Barra inferior de estado: última sincronización, alertas, broker MQTT y USB.
+Barra inferior de estado: último mensaje recibido, broker MQTT local y USB.
 
 Uso:
     bar = StatusBar(root)
     bar.pack(side="bottom", fill="x")
-    bar.start_clock(root)        # actualiza el reloj de sync cada segundo
+    bar.start_clock(root)        # actualiza el reloj cada segundo
 
     # Desde callbacks:
-    bar.mark_sync()              # llamar al recibir cualquier mensaje MQTT
+    bar.mark_message_received()  # llamar al recibir cualquier dato de placa
     bar.update_mqtt(True)
     bar.update_alerts(3)
     bar.update_usb_count(1)
@@ -31,8 +31,8 @@ class StatusBar(ctk.CTkFrame):
     Franja horizontal en la parte inferior de la ventana.
 
     Columnas:
-        Izquierda  — última sincronización con el servidor
-        Centro     — estado del broker MQTT
+        Izquierda  — tiempo desde último mensaje de placa
+        Centro     — estado del broker MQTT local
         Derecha    — alertas activas | placas USB conectadas
     """
 
@@ -43,7 +43,7 @@ class StatusBar(ctk.CTkFrame):
         super().__init__(master, **kwargs)
 
         self.pack_propagate(False)
-        self._last_sync: datetime | None = None
+        self._last_message: datetime | None = None
         self._clock_running = False
 
         self._build()
@@ -53,21 +53,21 @@ class StatusBar(ctk.CTkFrame):
     # ------------------------------------------------------------------
 
     def _build(self) -> None:
-        # ── Izquierda: última sincronización ────────────────────────
+        # ── Izquierda: tiempo desde último mensaje ─────────────────
         left = ctk.CTkFrame(self, fg_color="transparent")
         left.pack(side="left", padx=(12, 0))
 
-        self._sync_label = ctk.CTkLabel(
+        self._msg_label = ctk.CTkLabel(
             left,
-            text="Sin datos del servidor",
+            text="Esperando datos de placas...",
             font=FONT_SMALL,
             text_color=("gray40", "gray55"),
         )
-        self._sync_label.pack(side="left")
+        self._msg_label.pack(side="left")
 
         _sep(self)
 
-        # ── Centro: broker MQTT ──────────────────────────────────────
+        # ── Centro: broker MQTT local ──────────────────────────────
         center = ctk.CTkFrame(self, fg_color="transparent")
         center.pack(side="left")
 
@@ -82,7 +82,7 @@ class StatusBar(ctk.CTkFrame):
 
         self._broker_label = ctk.CTkLabel(
             center,
-            text="Broker MQTT desconectado",
+            text="Broker MQTT local: detenido",
             font=FONT_SMALL,
             text_color=("gray40", "gray55"),
         )
@@ -123,16 +123,16 @@ class StatusBar(ctk.CTkFrame):
     # API pública
     # ------------------------------------------------------------------
 
-    def mark_sync(self) -> None:
+    def mark_message_received(self) -> None:
         """
-        Registrar el momento de la última sincronización.
-        Llamar desde DataReceiver al recibir cualquier mensaje MQTT.
+        Registrar el momento del último mensaje recibido de una placa.
+        Llamar desde DataReceiver al recibir cualquier dato.
         """
-        self._last_sync = datetime.now()
+        self._last_message = datetime.now()
 
     def start_clock(self, root) -> None:
         """
-        Iniciar el refresco del label de sincronización cada segundo.
+        Iniciar el refresco del label cada segundo.
         Llamar una sola vez desde MainWindow tras construir la ventana.
         """
         if not self._clock_running:
@@ -140,9 +140,9 @@ class StatusBar(ctk.CTkFrame):
             self._tick(root)
 
     def update_mqtt(self, connected: bool) -> None:
-        """Actualizar indicador de estado del broker."""
+        """Actualizar indicador de estado del broker MQTT local."""
         color = COLORS["connected"] if connected else COLORS["disconnected"]
-        text = "Broker MQTT conectado" if connected else "Broker MQTT desconectado"
+        text = "Broker MQTT local: activo" if connected else "Broker MQTT local: detenido"
         self._broker_dot.configure(text_color=color)
         self._broker_label.configure(text=text)
 
@@ -178,28 +178,28 @@ class StatusBar(ctk.CTkFrame):
     # ------------------------------------------------------------------
 
     def _tick(self, root) -> None:
-        """Refrescar el label de sincronización cada segundo."""
-        self._refresh_sync_label()
+        """Refrescar el label cada segundo."""
+        self._refresh_message_label()
         root.after(1_000, lambda: self._tick(root))
 
-    def _refresh_sync_label(self) -> None:
-        if self._last_sync is None:
-            self._sync_label.configure(text="Sin datos del servidor")
+    def _refresh_message_label(self) -> None:
+        if self._last_message is None:
+            self._msg_label.configure(text="Esperando datos de placas...")
             return
 
-        elapsed = int((datetime.now() - self._last_sync).total_seconds())
+        elapsed = int((datetime.now() - self._last_message).total_seconds())
         if elapsed < 5:
-            text = "Sync: ahora mismo"
+            text = "Último mensaje: ahora mismo"
         elif elapsed < 60:
-            text = f"Sync: hace {elapsed} s"
+            text = f"Último mensaje: hace {elapsed} s"
         elif elapsed < 3600:
-            text = f"Sync: hace {elapsed // 60} min"
+            text = f"Último mensaje: hace {elapsed // 60} min"
         else:
-            text = f"Sync: hace {elapsed // 3600} h"
+            text = f"Último mensaje: hace {elapsed // 3600} h"
 
         # Si llevan más de 2 min sin datos, resaltar en ámbar
         color = COLORS["warning"] if elapsed > 120 else ("gray40", "gray55")
-        self._sync_label.configure(text=text, text_color=color)
+        self._msg_label.configure(text=text, text_color=color)
 
 
 # ---------------------------------------------------------------------------
