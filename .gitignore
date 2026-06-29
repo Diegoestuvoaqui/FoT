@@ -21,3 +21,4 @@ test_output.log
 *.toml
 *.toml
 platformio.includes
+doc
