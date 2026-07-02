@@ -80,13 +80,6 @@ class Database:
                     ts TEXT DEFAULT (datetime('now'))
                 );
 
-                CREATE TABLE IF NOT EXISTS configuracion_snapshots (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE,
-                    descripcion TEXT,
-                    datos_json TEXT NOT NULL,
-                    ts TEXT DEFAULT (datetime('now'))
-                );
 
                 CREATE INDEX IF NOT EXISTS idx_lecturas_board_ts
                     ON lecturas(board_id, ts_base);
@@ -98,8 +91,6 @@ class Database:
                     ON boards(usuario_id);
                 CREATE INDEX IF NOT EXISTS idx_boards_sketch
                     ON boards(sketch_id);
-                CREATE INDEX IF NOT EXISTS idx_snapshots_usuario
-                    ON configuracion_snapshots(usuario_id);
             """)
             self._conn.commit()
 
@@ -394,41 +385,6 @@ class Database:
             cur = self._conn.execute(query, params)
             return [dict(row) for row in cur.fetchall()]
 
-    # --------------------------------------------------------------------------
-    # SNAPSHOTS
-    # --------------------------------------------------------------------------
-    def save_snapshot(self, usuario_id: int | None, descripcion: str, datos_json: str) -> None:
-        with self._lock:
-            self._conn.execute(
-                """
-                INSERT INTO configuracion_snapshots (usuario_id, descripcion, datos_json)
-                VALUES (?, ?, ?)
-                """,
-                (usuario_id, descripcion, datos_json),
-            )
-            self._conn.commit()
-
-    def get_snapshots(self, usuario_id: int | None = None) -> list[dict]:
-        with self._lock:
-            if usuario_id is None:
-                cur = self._conn.execute(
-                    "SELECT * FROM configuracion_snapshots ORDER BY id DESC"
-                )
-            else:
-                cur = self._conn.execute(
-                    "SELECT * FROM configuracion_snapshots WHERE usuario_id = ? ORDER BY id DESC",
-                    (usuario_id,),
-                )
-            return [dict(row) for row in cur.fetchall()]
-
-    def get_snapshot(self, snapshot_id: int) -> dict | None:
-        with self._lock:
-            cur = self._conn.execute(
-                "SELECT * FROM configuracion_snapshots WHERE id = ?",
-                (snapshot_id,),
-            )
-            row = cur.fetchone()
-            return dict(row) if row else None
 
     def update_user_last_login(self, user_id: int) -> None:
         with self._lock:

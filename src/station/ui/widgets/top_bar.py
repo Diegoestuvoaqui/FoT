@@ -26,7 +26,7 @@ class TopBar(ctk.CTkFrame):
     Barra horizontal en la parte superior de la ventana.
 
     Columnas:
-        Izquierda  — logo "IoT" + subtítulo
+        Izquierda  — logo "FoT" + subtítulo
         Derecha    — estado MQTT local | placas activas | campana notificaciones
     """
 
@@ -64,7 +64,7 @@ class TopBar(ctk.CTkFrame):
 
         self._logo = ctk.CTkLabel(
             left,
-            text="IoT",
+            text="FoT",
             font=FONT_LOGO,
             text_color=COLORS["accent"],
         )

@@ -2,10 +2,11 @@
 """
 Panel deslizable que muestra el historial de notificaciones.
 Se abre al hacer clic en la campana del TopBar.
+Funciona como un overlay flotante usando place().
 
 Uso:
-    panel = NotificationPanel(parent, notification_manager=mgr)
-    panel.show()  # o toggle()
+    panel = NotificationPanel(parent, notification_manager=mgr, on_close=callback)
+    panel.show()  # o simplemente crearlo
 """
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 class NotificationPanel(ctk.CTkFrame):
     """
     Panel de historial de notificaciones estilo "centro de notificaciones".
+    Funciona como overlay flotante dentro del parent widget.
     """
 
     def __init__(self,
@@ -30,6 +32,10 @@ class NotificationPanel(ctk.CTkFrame):
                  notification_manager: NotificationManager,
                  on_close=None,
                  **kwargs):
+        kwargs.setdefault("corner_radius", 12)
+        kwargs.setdefault("border_width", 1)
+        kwargs.setdefault("border_color", COLORS["border"])
+        kwargs.setdefault("fg_color", ("gray90", "#1c1c1c"))
         super().__init__(master, **kwargs)
 
         self._notif_mgr = notification_manager
@@ -68,14 +74,14 @@ class NotificationPanel(ctk.CTkFrame):
 
         ctk.CTkButton(
             header,
-            text="Limpiar",
-            font=FONT_SMALL,
-            width=80,
+            text="✕",
+            font=("Roboto", 12, "bold"),
+            width=32,
             height=28,
             fg_color="transparent",
-            border_width=1,
-            border_color=COLORS["border"],
-            command=self._clear_all,
+            hover_color=("gray80", "#2e2e2e"),
+            text_color=("gray40", "gray60"),
+            command=self._close,
         ).grid(row=0, column=2, padx=(4, 0))
 
         # Lista scrollable
@@ -123,7 +129,6 @@ class NotificationPanel(ctk.CTkFrame):
 
     def _add_notif_row(self, index: int, notif):
         border_color, bg_color = NOTIF_COLORS[notif.tipo]
-        alpha = 1.0 if not notif.read else 0.6
 
         row = ctk.CTkFrame(
             self._list_frame,
@@ -189,6 +194,10 @@ class NotificationPanel(ctk.CTkFrame):
     def _clear_all(self):
         self._notif_mgr.clear_all()
         self._refresh()
+
+    def _close(self):
+        if self._on_close:
+            self._on_close()
 
     def destroy(self):
         self._notif_mgr.remove_observer(self._refresh)

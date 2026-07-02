@@ -15,7 +15,6 @@ class DHT11Panel(ctk.CTkFrame):
         self,
         master,
         on_select_board: Optional[Callable[[str | None], None]] = None,
-        on_export: Optional[Callable[[str], None]] = None,
         **kwargs,
     ):
         super().__init__(master, **kwargs)
@@ -26,7 +25,6 @@ class DHT11Panel(ctk.CTkFrame):
         self.grid_rowconfigure(1, weight=1, minsize=150)
 
         self._on_select_board = on_select_board
-        self._on_export = on_export
         self._boards: list = []
         self._selected_board_id: str | None = None
 
@@ -48,15 +46,6 @@ class DHT11Panel(ctk.CTkFrame):
         self._list_frame.grid(row=1, column=0, sticky="nsew", padx=6, pady=4)
         self._list_frame.grid_columnconfigure(0, weight=1)
 
-        # Botón exportar
-        btn_frame = ctk.CTkFrame(left, fg_color="transparent")
-        btn_frame.grid(row=2, column=0, pady=6, padx=6, sticky="ew")
-
-        ctk.CTkButton(
-            btn_frame, text="Exportar datos",
-            font=FONT_SMALL,
-            command=self._on_export_clicked,
-        ).pack(fill="x", padx=2)
 
     def _build_right(self):
         right = ctk.CTkFrame(self)
@@ -200,9 +189,6 @@ class DHT11Panel(ctk.CTkFrame):
         if self._on_select_board:
             self._on_select_board(board_id)
 
-    def _on_export_clicked(self):
-        if self._selected_board_id and self._on_export:
-            self._on_export(self._selected_board_id)
 
     def _refresh_history(self, board_id: str):
         # Llamar a DB para obtener últimas lecturas

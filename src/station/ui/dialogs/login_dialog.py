@@ -21,7 +21,7 @@ class LoginDialog(ctk.CTkToplevel):
         on_register: callback() llamado al hacer clic en "Crear cuenta"
         """
         super().__init__(parent)
-        self.title("IoT — Iniciar sesión")
+        self.title("FoT — Iniciar sesión")
         self.geometry("600x600")
         self.resizable(False, False)
 
@@ -53,7 +53,7 @@ class LoginDialog(ctk.CTkToplevel):
 
         ctk.CTkLabel(
             title_frame,
-            text="IoT",
+            text="FoT",
             font=("Roboto", 32, "bold"),
             text_color=COLORS["accent"],
         ).pack()

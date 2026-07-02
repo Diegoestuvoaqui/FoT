@@ -6,6 +6,7 @@ Uso:
     bar = StatusBar(root)
     bar.pack(side="bottom", fill="x")
     bar.start_clock(root)        # actualiza el reloj cada segundo
+    bar.stop_clock()             # detener el reloj antes de destruir
 
     # Desde callbacks:
     bar.mark_message_received()  # llamar al recibir cualquier dato de placa
@@ -45,6 +46,8 @@ class StatusBar(ctk.CTkFrame):
         self.pack_propagate(False)
         self._last_message: datetime | None = None
         self._clock_running = False
+        self._after_id: str | None = None
+        self._root_ref = None
 
         self._build()
 
@@ -137,7 +140,20 @@ class StatusBar(ctk.CTkFrame):
         """
         if not self._clock_running:
             self._clock_running = True
-            self._tick(root)
+            self._root_ref = root
+            self._tick()
+
+    def stop_clock(self) -> None:
+        """
+        Detener el reloj. Llamar antes de destruir el widget.
+        """
+        self._clock_running = False
+        if self._after_id is not None and self._root_ref is not None:
+            try:
+                self._root_ref.after_cancel(self._after_id)
+            except Exception:
+                pass
+            self._after_id = None
 
     def update_mqtt(self, connected: bool) -> None:
         """Actualizar indicador de estado del broker MQTT local."""
@@ -177,29 +193,49 @@ class StatusBar(ctk.CTkFrame):
     # Interno
     # ------------------------------------------------------------------
 
-    def _tick(self, root) -> None:
+    def _tick(self) -> None:
         """Refrescar el label cada segundo."""
-        self._refresh_message_label()
-        root.after(1_000, lambda: self._tick(root))
-
-    def _refresh_message_label(self) -> None:
-        if self._last_message is None:
-            self._msg_label.configure(text="Esperando datos de placas...")
+        if not self._clock_running or self._root_ref is None:
             return
 
-        elapsed = int((datetime.now() - self._last_message).total_seconds())
-        if elapsed < 5:
-            text = "Último mensaje: ahora mismo"
-        elif elapsed < 60:
-            text = f"Último mensaje: hace {elapsed} s"
-        elif elapsed < 3600:
-            text = f"Último mensaje: hace {elapsed // 60} min"
-        else:
-            text = f"Último mensaje: hace {elapsed // 3600} h"
+        # Verificar que el widget todavía existe
+        try:
+            if not self.winfo_exists():
+                self._clock_running = False
+                return
+            self._refresh_message_label()
+            self._after_id = self._root_ref.after(1_000, self._tick)
+        except Exception:
+            # Widget fue destruido, detener reloj
+            self._clock_running = False
 
-        # Si llevan más de 2 min sin datos, resaltar en ámbar
-        color = COLORS["warning"] if elapsed > 120 else ("gray40", "gray55")
-        self._msg_label.configure(text=text, text_color=color)
+    def _refresh_message_label(self) -> None:
+        try:
+            if self._last_message is None:
+                self._msg_label.configure(text="Esperando datos de placas...")
+                return
+
+            elapsed = int((datetime.now() - self._last_message).total_seconds())
+            if elapsed < 5:
+                text = "Último mensaje: ahora mismo"
+            elif elapsed < 60:
+                text = f"Último mensaje: hace {elapsed} s"
+            elif elapsed < 3600:
+                text = f"Último mensaje: hace {elapsed // 60} min"
+            else:
+                text = f"Último mensaje: hace {elapsed // 3600} h"
+
+            # Si llevan más de 2 min sin datos, resaltar en ámbar
+            color = COLORS["warning"] if elapsed > 120 else ("gray40", "gray55")
+            self._msg_label.configure(text=text, text_color=color)
+        except Exception:
+            # Widget fue destruido, ignorar
+            pass
+
+    def destroy(self) -> None:
+        """Limpieza al destruir el widget."""
+        self.stop_clock()
+        super().destroy()
 
 
 # ---------------------------------------------------------------------------

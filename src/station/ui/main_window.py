@@ -5,7 +5,6 @@ import tkinter as tk
 import customtkinter as ctk
 from controller.bluetooth_controller import BluetoothController
 from controller.wifi_controller import WiFiController
-from ui.dialogs.export_dialog import ExportDialog
 from ui.dialogs.firmware_dialog import FirmwareDialog
 from ui.dialogs.register_dialog import RegisterDialog
 from ui.panels.admin_panel import AdminPanel
@@ -14,8 +13,9 @@ from ui.panels.dht11_panel import DHT11Panel
 from ui.panels.help_panel import HelpPanel
 from ui.panels.login_panel import LoginPanel
 from ui.panels.settings_panel import SettingsPanel
-from ui.theme import FONT_NORMAL, FONT_SMALL
+from ui.theme import FONT_NORMAL, FONT_SMALL, TOPBAR_HEIGHT
 from ui.widgets.notification_manager import NotificationManager
+from ui.widgets.notification_panel import NotificationPanel
 from ui.widgets.side_bar import SideBar
 from ui.widgets.status_bar import StatusBar
 from ui.widgets.top_bar import TopBar
@@ -32,30 +32,29 @@ class MainWindow:
                  root: ctk.CTk,
                  mqtt_bus,
                  board_ctrl,
-                 snap_ctrl,
-                 export_ctrl,
                  event_ctrl,
                  auth_ctrl,
                  sensor_manager,
-                 user=None):
+                 user=None,
+                 on_logout=None):
         self._root = root
         self._mqtt_bus = mqtt_bus
         self._sensor_manager = sensor_manager
 
         self._board_ctrl = board_ctrl
-        self._snap_ctrl = snap_ctrl
-        self._export_ctrl = export_ctrl
         self._event_ctrl = event_ctrl
         self._auth_ctrl = auth_ctrl
         self._user = user
+        self._on_logout = on_logout
 
         self._selected_board_id: str | None = None
         self._current_panel: ctk.CTkFrame | None = None
+        self._notif_panel_visible = False
 
         # Sistema de notificaciones
         self._notif_mgr = NotificationManager(root)
 
-        self._root.title("IoT — Estación Base")
+        self._root.title("FoT — Estación Base")
         self._root.minsize(960, 640)
         self._root.grid_rowconfigure(1, weight=1)
         self._root.grid_columnconfigure(1, weight=1)
@@ -88,6 +87,9 @@ class MainWindow:
         self._content_area.grid_rowconfigure(0, weight=1)
         self._content_area.grid_columnconfigure(0, weight=1)
 
+        # Panel de notificaciones (inicialmente oculto, overlay flotante)
+        self._notif_panel = None
+
         self._panels: dict[str, ctk.CTkFrame] = {}
 
         # Login
@@ -102,7 +104,6 @@ class MainWindow:
         self.dht11_panel = DHT11Panel(
             self._content_area,
             on_select_board=self._on_select_board,
-            on_export=self._on_export_dht11,
         )
         self._panels["dht11"] = self.dht11_panel
 
@@ -134,10 +135,13 @@ class MainWindow:
         self.admin_panel.set_reset_password_callback(self._on_admin_reset_password)
         self._panels["admin"] = self.admin_panel
 
-        # Settings Panel (NUEVO)
+        # Settings Panel (con auth_controller, user y on_logout)
         self.settings_panel = SettingsPanel(
             self._content_area,
             notification_manager=self._notif_mgr,
+            auth_controller=self._auth_ctrl,
+            user=self._user,
+            on_logout=self._do_logout,
         )
         self._panels["ajustes"] = self.settings_panel
 
@@ -185,9 +189,9 @@ class MainWindow:
         self._setup_authenticated_ui()
 
     def _navigate(self, section: str) -> None:
-        if section == "exportar":
-            self._on_export()
-            return
+        # Si el panel de notificaciones está visible, ocultarlo
+        if self._notif_panel_visible:
+            self._hide_notification_panel()
 
         panel = self._panels.get(section)
         if panel is None:
@@ -230,10 +234,6 @@ class MainWindow:
             readings = self._board_ctrl._service._db.get_readings(board_id, limit=100)
             self.dht11_panel.show_history(board_id, readings)
 
-    def _on_export_dht11(self, board_id: str):
-        boards = self._board_ctrl.get_boards_by_sketch("dht11")
-        dialog_data = [{"id": b.id, "name": b.sketch_name or b.id} for b in boards]
-        ExportDialog(self._root, dialog_data, self._export_ctrl, None)
 
     # --- Callbacks Arduino Panel ---
     def _on_register_board(self, board_id: str):
@@ -338,16 +338,40 @@ class MainWindow:
             )
             self._status_bar.update_alerts(1)
 
-    def _on_export(self):
-        boards = self._board_ctrl.get_boards_by_sketch("dht11")
-        dialog_data = [{"id": b.id, "name": b.sketch_name or b.id} for b in boards]
-        ExportDialog(self._root, dialog_data, self._export_ctrl, None)
 
     def _on_bell_clicked(self):
-        """Abrir panel de notificaciones o historial."""
-        # Por ahora solo marca como leídas; se puede expandir a un panel
-        self._notif_mgr.mark_all_read()
-        logger.info("Campana de notificaciones clickeada")
+        """Abrir/ocultar panel de notificaciones."""
+        if self._notif_panel_visible:
+            self._hide_notification_panel()
+        else:
+            self._show_notification_panel()
+
+    def _show_notification_panel(self):
+        """Muestra el panel de notificaciones como overlay flotante."""
+        if self._notif_panel is not None:
+            self._notif_panel.destroy()
+
+        self._notif_panel = NotificationPanel(
+            self._root,
+            notification_manager=self._notif_mgr,
+            on_close=self._hide_notification_panel,
+        )
+        # Posicionar en la esquina superior derecha, debajo del top bar
+        self._notif_panel.place(
+            relx=1.0, x=-20, y=TOPBAR_HEIGHT + 10,
+            anchor="ne",
+            relwidth=0.35, relheight=0.6
+        )
+        self._notif_panel_visible = True
+        logger.info("Panel de notificaciones abierto")
+
+    def _hide_notification_panel(self):
+        """Oculta el panel de notificaciones."""
+        if self._notif_panel is not None:
+            self._notif_panel.destroy()
+            self._notif_panel = None
+        self._notif_panel_visible = False
+        logger.info("Panel de notificaciones cerrado")
 
     # --- Admin ---
     def _open_register_dialog(self):
@@ -371,10 +395,13 @@ class MainWindow:
             self.admin_panel.refresh_users(users, self._user.id)
 
     def cleanup(self):
+        self._status_bar.stop_clock()
         self._event_ctrl.cleanup()
         self._board_ctrl.cleanup()
         if self._notif_mgr:
             self._notif_mgr.remove_observer(self._top_bar._update_badge)
+        if self._notif_panel is not None:
+            self._notif_panel.destroy()
 
     def _on_register_scanned_device(self, board_id: str, address: str, conn_type: str) -> None:
         if conn_type == "bluetooth":
@@ -470,3 +497,51 @@ class MainWindow:
             f"Contraseña temporal generada para {username}",
             tipo="warning"
         )
+
+    # ================================================================
+    # LOGOUT
+    # ================================================================
+    def _do_logout(self):
+        """Cierra la sesión actual y vuelve a la pantalla de login."""
+        logger.info("Cerrando sesión de usuario: %s", self._user.username if self._user else "unknown")
+
+        # Notificar logout
+        self._notif_mgr.notify(
+            "Sesión cerrada",
+            f"Hasta luego, {self._user.username if self._user else 'usuario'}",
+            tipo="info"
+        )
+
+        # Limpiar callbacks del sensor manager
+        self._sensor_manager.set_callbacks(on_reading=None, on_identify=None)
+
+        # Llamar a cleanup para detener timers y liberar recursos
+        self.cleanup()
+
+        # Limpiar UI
+        self._event_ctrl.cleanup()
+        self._board_ctrl.cleanup()
+
+        # Ocultar panel de notificaciones si está visible
+        if self._notif_panel_visible:
+            self._hide_notification_panel()
+
+        # Ocultar sidebar, topbar, statusbar
+        self._side_bar.grid_remove()
+        self._top_bar.grid_remove()
+        self._status_bar.grid_remove()
+
+        # Limpiar área de contenido
+        if self._current_panel is not None:
+            self._current_panel.grid_remove()
+            self._current_panel = None
+
+        # Resetear usuario
+        self._user = None
+
+        # Volver a mostrar login
+        self._navigate("login")
+
+        # Llamar al callback externo si existe
+        if self._on_logout:
+            self._on_logout()

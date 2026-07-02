@@ -48,7 +48,6 @@ DIVIDER = ("gray75", "#2e2e2e")
 NAV_ITEMS = [
     ("dht11", "DHT11", "Panel de lecturas DHT11"),
     ("arduinos", "Arduinos", "Gestor de placas Arduino"),
-    ("exportar", "Exportar", "Exportar datos históricos"),
     ("ayuda", "Ayuda", "Ayuda del sistema"),
 ]
 

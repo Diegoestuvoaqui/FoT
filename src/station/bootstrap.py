@@ -31,7 +31,7 @@ log_type warning
 # --------------------------------------------------------------------------
 _SERVICE = f"""\
 [Unit]
-Description=IoT Estacion Base
+Description=FoT Estacion Base
 After=graphical-session.target
 
 [Service]

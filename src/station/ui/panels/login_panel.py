@@ -37,14 +37,14 @@ class LoginPanel(ctk.CTkFrame):
         # Logo más grande
         ctk.CTkLabel(
             container,
-            text="IoT",
+            text="FoT",
             font=("Roboto", 48, "bold"),
             text_color=COLORS["accent"],
         ).grid(row=0, column=0, pady=(40, 8))
 
         ctk.CTkLabel(
             container,
-            text="Internet of Things",
+            text="Farm of Things",
             font=("Roboto", 18),
             text_color=("gray50", "gray70"),
         ).grid(row=1, column=0, pady=(0, 30))

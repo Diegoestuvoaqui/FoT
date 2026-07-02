@@ -35,14 +35,6 @@ class SensorChart(ctk.CTkFrame):
                 command=self._on_range_changed,
             ).grid(row=0, column=i, padx=4)
 
-        ctk.CTkButton(
-            ctrl_frame,
-            text="Exportar PNG",
-            font=FONT_SMALL,
-            width=100,
-            command=self._export_png,
-        ).grid(row=0, column=len(ranges), padx=8, sticky="e")
-        ctrl_frame.grid_columnconfigure(len(ranges), weight=1)
 
         self._canvas_frame = tk.Frame(self, bg="#1c1c1c")
         self._canvas_frame.grid(row=1, column=0, sticky="nsew", padx=4, pady=4)
@@ -125,12 +117,3 @@ class SensorChart(ctk.CTkFrame):
             label.set_color("white")
 
         self._mpl_canvas.draw()
-
-    def _export_png(self):
-        path = filedialog.asksaveasfilename(
-            defaultextension=".png",
-            filetypes=[("PNG", "*.png")],
-            title="Guardar gráfico como PNG",
-        )
-        if path:
-            self._figure.savefig(path, dpi=150, facecolor="#1c1c1c")

@@ -16,18 +16,13 @@ from connection.mqtt_client import MQTTEventBus
 from controller.auth_controller import AuthController
 from controller.board_controller import BoardController
 from controller.event_controller import EventController
-from controller.export_controller import ExportController
-from controller.snapshot_controller import SnapshotController
 from data.database import Database
-from domain.memento import ConfigManager
 from domain.user import User
 from logic.data_receiver import DataReceiver
 from logic.sensor_manager import SensorManager
 from service.auth_service import AuthService
 from service.board_service import BoardService
 from service.event_service import EventService
-from service.export_service import ExportService
-from service.snapshot_service import SnapshotService
 from ui.main_window import MainWindow
 from ui.panels.login_panel import LoginPanel
 from ui.theme import apply_theme
@@ -39,7 +34,7 @@ _ok, _msg = bootstrap()
 if not _ok:
     _root = tk.Tk()
     _root.withdraw()
-    messagebox.showerror("IoT — Error de configuración", _msg)
+    messagebox.showerror("FoT — Error de configuración", _msg)
     _root.destroy()
     sys.exit(1)
 
@@ -70,7 +65,8 @@ def _build_main(root: ctk.CTk,
                 mqtt_bus: MQTTEventBus,
                 sensor_manager: SensorManager,
                 data_receiver: DataReceiver,
-                auth_ctrl: AuthController) -> None:
+                auth_ctrl: AuthController,
+                on_logout=None) -> MainWindow:
     """
     Construye la interfaz principal una vez que el login fue exitoso.
     Se ejecuta dentro del callback de login (todavía dentro de mainloop).
@@ -93,7 +89,7 @@ def _build_main(root: ctk.CTk,
     # ------------------------------------------------------------------
     # Capa de Servicios
     # ------------------------------------------------------------------
-    config_manager = ConfigManager()
+
     event_service = EventService(db)
 
     board_service = BoardService(
@@ -102,19 +98,14 @@ def _build_main(root: ctk.CTk,
     )
     board_service.load_from_db()
 
-    snapshot_service = SnapshotService(
-        db=db, config_manager=config_manager,
-        event_service=event_service, usuario_id=current_user.id
-    )
-    export_service = ExportService(db)
+
 
     # ------------------------------------------------------------------
     # Capa de Controladores
     # ------------------------------------------------------------------
     event_controller = EventController(event_service)
     board_controller = BoardController(board_service)
-    snapshot_controller = SnapshotController(snapshot_service)
-    export_controller = ExportController(export_service)
+
 
     # ------------------------------------------------------------------
     # Vista principal
@@ -123,12 +114,11 @@ def _build_main(root: ctk.CTk,
         root=root,
         mqtt_bus=mqtt_bus,
         board_ctrl=board_controller,
-        snap_ctrl=snapshot_controller,
-        export_ctrl=export_controller,
         event_ctrl=event_controller,
         user=current_user,
         auth_ctrl=auth_ctrl,
         sensor_manager=sensor_manager,
+        on_logout=on_logout,
     )
 
     # ------------------------------------------------------------------
@@ -140,7 +130,7 @@ def _build_main(root: ctk.CTk,
     # Cierre limpio
     # ------------------------------------------------------------------
     def on_close() -> None:
-        logger.info("Cerrando IoT Estación Base")
+        logger.info("Cerrando FoT Estación Base")
         sensor_manager.disconnect_all()
         #mqtt_bus.unregister(data_receiver)
         mqtt_bus.stop()
@@ -157,10 +147,11 @@ def _build_main(root: ctk.CTk,
     signal.signal(signal.SIGTERM, _handle_sigterm)
 
     logger.info("UI lista, entrando en mainloop")
+    return window
 
 
 def main() -> None:
-    logger.info("Arrancando IoT Estación Base")
+    logger.info("Arrancando FoT Estación Base")
 
     # ------------------------------------------------------------------
     # Infraestructura
@@ -191,7 +182,7 @@ def main() -> None:
     apply_theme()
 
     root = ctk.CTk()
-    root.title("IoT — Iniciar sesión")
+    root.title("FoT — Iniciar sesión")
     root.geometry("600x800")
     root.resizable(False, False)
     root.grid_columnconfigure(0, weight=1)
@@ -201,6 +192,7 @@ def main() -> None:
 
     current_user: User | None = None
     login_panel_ref: list[LoginPanel | None] = [None]
+    main_window_ref: list[MainWindow | None] = [None]
 
     def _on_login_success(user: User) -> None:
         nonlocal current_user
@@ -211,7 +203,7 @@ def main() -> None:
             login_panel_ref[0].destroy()
 
         # Reconfigurar la misma ventana para la app principal
-        root.title("IoT — Estación Base")
+        root.title("FoT — Estación Base")
         root.resizable(True, True)
         root.minsize(960, 640)
         root.geometry("960x960")
@@ -225,7 +217,51 @@ def main() -> None:
         root.grid_columnconfigure(1, weight=1)
 
         # Construir la app principal
-        _build_main(root, user, db, mqtt_bus, sensor_manager, data_receiver, auth_ctrl)
+        main_window_ref[0] = _build_main(
+            root, user, db, mqtt_bus, sensor_manager, data_receiver, auth_ctrl,
+            on_logout=_on_logout
+        )
+
+    def _on_logout() -> None:
+        """Callback llamado cuando el usuario cierra sesión desde SettingsPanel."""
+        nonlocal current_user
+        current_user = None
+
+        # Destruir la ventana principal actual y reconstruir login
+        if main_window_ref[0]:
+            main_window_ref[0].cleanup()
+            main_window_ref[0] = None
+
+        # Limpiar todos los widgets del root
+        for widget in root.winfo_children():
+            widget.destroy()
+
+        # Resetear grid
+        for i in range(root.grid_size()[1]):
+            root.grid_rowconfigure(i, weight=0)
+        for i in range(root.grid_size()[0]):
+            root.grid_columnconfigure(i, weight=0)
+        root.grid_rowconfigure(0, weight=1)
+        root.grid_columnconfigure(0, weight=1)
+
+        # Volver a pantalla de login
+        root.title("FoT — Iniciar sesión")
+        root.geometry("600x800")
+        root.resizable(False, False)
+
+        login_panel = LoginPanel(
+            root,
+            auth_controller=auth_ctrl,
+            on_login=_on_login_success,
+            on_register=None,
+        )
+        login_panel.grid(row=0, column=0, sticky="nsew")
+        login_panel_ref[0] = login_panel
+
+        if not auth_service._db.user_exists():
+            login_panel.set_first_user_info(True)
+
+        logger.info("Sesión cerrada, volviendo a pantalla de login")
 
     login_panel = LoginPanel(
         root,

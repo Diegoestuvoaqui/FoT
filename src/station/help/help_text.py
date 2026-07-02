@@ -6,7 +6,7 @@ Se importa como una cadena desde HelpPanel.
 
 HELP_TEXT = """
 ============================================================
-                    IoT — Internet of Things
+                    FoT — Farm of Things
 ============================================================
 
 INTRODUCCIÓN
@@ -23,8 +23,6 @@ PANELES DE LA APLICACIÓN
 • Gestor de Arduinos: lista las placas detectadas (USB, WiFi o Bluetooth),
   permite registrar placas, actualizar el firmware y ver
   los periféricos conectados (sensores, módulos de red).
-
-• Exportar: guarda los datos históricos (lecturas o eventos) en formato CSV o JSON.
 
 • Ayuda: este mismo panel.
 

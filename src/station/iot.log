@@ -485,3 +485,91 @@
 2026-07-01 13:20:40,911 INFO ui.widgets.notification_manager — Notificación [info]: Usuario eliminado — El usuario ID 2 fue eliminado
 2026-07-01 13:20:53,446 INFO __main__ — Cerrando IoT Estación Base
 2026-07-01 13:20:54,122 INFO __main__ — IoT Estación Base cerrada
+2026-07-02 09:16:58,014 INFO __main__ — Arrancando IoT Estación Base
+2026-07-02 09:16:58,026 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/iot.db
+2026-07-02 09:16:58,026 INFO service.auth_service — No hay usuarios. Creando admin por defecto...
+2026-07-02 09:16:58,453 WARNING service.auth_service — Admin creado: usuario='admin', contraseña='admin' — CAMBIA ESTA CONTRASEÑA
+2026-07-02 09:16:58,457 INFO __main__ — MQTT broker local en localhost:1883
+2026-07-02 09:16:58,513 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-07-02 09:16:58,690 INFO __main__ — UI lista, entrando en mainloop (login)
+2026-07-02 09:17:05,812 INFO service.auth_service — Login exitoso: admin (role=admin)
+2026-07-02 09:17:05,838 INFO __main__ — Usuario autenticado: admin (role=admin)
+2026-07-02 09:17:05,838 INFO __main__ — Cargando boards para usuario admin
+2026-07-02 09:17:06,767 INFO ui.widgets.notification_manager — Notificación [success]: Sesión iniciada — Bienvenido, admin
+2026-07-02 09:17:06,767 INFO __main__ — UI lista, entrando en mainloop
+2026-07-02 09:17:12,087 INFO __main__ — Cerrando IoT Estación Base
+2026-07-02 09:17:12,635 INFO __main__ — IoT Estación Base cerrada
+2026-07-02 09:48:22,987 INFO __main__ — Arrancando IoT Estación Base
+2026-07-02 09:48:22,988 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/iot.db
+2026-07-02 09:48:22,992 INFO __main__ — MQTT broker local en localhost:1883
+2026-07-02 09:48:23,033 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-07-02 09:48:23,213 INFO __main__ — UI lista, entrando en mainloop (login)
+2026-07-02 09:51:16,368 INFO __main__ — Arrancando FoT Estación Base
+2026-07-02 09:51:16,369 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/iot.db
+2026-07-02 09:51:16,373 INFO __main__ — MQTT broker local en localhost:1883
+2026-07-02 09:51:16,421 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-07-02 09:51:16,592 INFO __main__ — UI lista, entrando en mainloop (login)
+2026-07-02 09:51:21,833 INFO service.auth_service — Login exitoso: admin (role=admin)
+2026-07-02 09:51:21,863 INFO __main__ — Usuario autenticado: admin (role=admin)
+2026-07-02 09:51:21,863 INFO __main__ — Cargando boards para usuario admin
+2026-07-02 09:51:22,865 INFO ui.widgets.notification_manager — Notificación [success]: Sesión iniciada — Bienvenido, admin
+2026-07-02 09:51:22,866 INFO __main__ — UI lista, entrando en mainloop
+2026-07-02 09:51:31,614 INFO ui.widgets.notification_manager — Notificación [info]: Prueba de sonido — Si escuchaste un sonido, las notificaciones están funcionando.
+2026-07-02 09:51:32,168 INFO ui.widgets.notification_manager — Notificación [info]: Prueba de sonido — Si escuchaste un sonido, las notificaciones están funcionando.
+2026-07-02 09:51:37,024 INFO ui.main_window — Campana de notificaciones clickeada
+2026-07-02 09:51:50,218 INFO ui.panels.settings_panel — Pantalla completa: True
+2026-07-02 09:51:53,070 INFO ui.panels.settings_panel — Pantalla completa: False
+2026-07-02 10:00:49,847 INFO __main__ — Cerrando FoT Estación Base
+2026-07-02 10:00:50,160 INFO __main__ — IoT Estación Base cerrada
+2026-07-02 10:02:41,030 INFO __main__ — Arrancando FoT Estación Base
+2026-07-02 10:02:41,031 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/iot.db
+2026-07-02 10:02:41,035 INFO __main__ — MQTT broker local en localhost:1883
+2026-07-02 10:02:41,039 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-07-02 10:02:41,249 INFO __main__ — UI lista, entrando en mainloop (login)
+2026-07-02 10:02:56,280 INFO service.auth_service — Usuario registrado: dda (id=2, role=user)
+2026-07-02 10:03:12,398 INFO service.auth_service — Login exitoso: dda (role=user)
+2026-07-02 10:03:12,411 INFO __main__ — Usuario autenticado: dda (role=user)
+2026-07-02 10:03:12,411 INFO __main__ — Cargando boards para usuario dda
+2026-07-02 10:03:13,347 INFO ui.widgets.notification_manager — Notificación [success]: Sesión iniciada — Bienvenido, dda
+2026-07-02 10:03:13,348 INFO __main__ — UI lista, entrando en mainloop
+2026-07-02 10:03:21,908 INFO ui.main_window — Panel de notificaciones abierto
+2026-07-02 10:03:26,259 INFO ui.main_window — Panel de notificaciones cerrado
+2026-07-02 10:03:42,328 INFO service.auth_service — Contraseña cambiada para: dda
+2026-07-02 10:03:42,329 INFO ui.panels.settings_panel — Contraseña cambiada para usuario: dda
+2026-07-02 10:03:49,863 INFO ui.panels.settings_panel — Historial de notificaciones limpiado
+2026-07-02 10:03:50,876 INFO ui.main_window — Panel de notificaciones abierto
+2026-07-02 10:03:51,485 INFO ui.main_window — Panel de notificaciones cerrado
+2026-07-02 10:03:55,630 INFO ui.panels.settings_panel — Tema cambiado a: light
+2026-07-02 10:03:59,130 INFO ui.panels.settings_panel — Tema cambiado a: dark
+2026-07-02 10:04:13,563 INFO ui.main_window — Cerrando sesión de usuario: dda
+2026-07-02 10:04:13,566 INFO ui.widgets.notification_manager — Notificación [info]: Sesión cerrada — Hasta luego, dda
+2026-07-02 10:04:13,897 INFO __main__ — Sesión cerrada, volviendo a pantalla de login
+2026-07-02 10:04:52,266 INFO __main__ — Cerrando FoT Estación Base
+2026-07-02 10:04:53,273 INFO __main__ — Login cancelado, saliendo
+2026-07-02 10:14:50,605 INFO __main__ — Arrancando FoT Estación Base
+2026-07-02 10:14:50,606 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/iot.db
+2026-07-02 10:14:50,609 INFO __main__ — MQTT broker local en localhost:1883
+2026-07-02 10:14:50,653 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-07-02 10:14:50,824 INFO __main__ — UI lista, entrando en mainloop (login)
+2026-07-02 10:14:56,611 INFO service.auth_service — Login exitoso: dda (role=user)
+2026-07-02 10:14:56,656 INFO __main__ — Usuario autenticado: dda (role=user)
+2026-07-02 10:14:56,656 INFO __main__ — Cargando boards para usuario dda
+2026-07-02 10:14:57,637 INFO ui.widgets.notification_manager — Notificación [success]: Sesión iniciada — Bienvenido, dda
+2026-07-02 10:14:57,637 INFO __main__ — UI lista, entrando en mainloop
+2026-07-02 10:14:59,057 INFO __main__ — Cerrando FoT Estación Base
+2026-07-02 10:14:59,905 INFO __main__ — IoT Estación Base cerrada
+2026-07-02 10:20:08,263 INFO __main__ — Arrancando FoT Estación Base
+2026-07-02 10:20:08,264 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/iot.db
+2026-07-02 10:20:08,268 INFO __main__ — MQTT broker local en localhost:1883
+2026-07-02 10:20:08,315 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-07-02 10:20:08,485 INFO __main__ — UI lista, entrando en mainloop (login)
+2026-07-02 10:20:14,370 INFO service.auth_service — Login exitoso: dda (role=user)
+2026-07-02 10:20:14,419 INFO __main__ — Usuario autenticado: dda (role=user)
+2026-07-02 10:20:14,420 INFO __main__ — Cargando boards para usuario dda
+2026-07-02 10:20:15,428 INFO ui.widgets.notification_manager — Notificación [success]: Sesión iniciada — Bienvenido, dda
+2026-07-02 10:20:15,428 INFO __main__ — UI lista, entrando en mainloop
+2026-07-02 10:20:19,366 INFO ui.main_window — Cerrando sesión de usuario: dda
+2026-07-02 10:20:19,368 INFO ui.widgets.notification_manager — Notificación [info]: Sesión cerrada — Hasta luego, dda
+2026-07-02 10:20:19,787 INFO __main__ — Sesión cerrada, volviendo a pantalla de login
+2026-07-02 10:21:24,361 INFO __main__ — Cerrando FoT Estación Base
+2026-07-02 10:21:24,456 INFO __main__ — Login cancelado, saliendo

@@ -1,10 +1,10 @@
 # ui/panels/settings_panel.py
 """
 Panel de ajustes generales de la aplicación.
-Incluye: pantalla completa, tema, configuración de notificaciones (sonido, toast).
+Incluye: cuenta (cambiar contraseña, logout), pantalla completa, tema, notificaciones.
 
 Uso:
-    panel = SettingsPanel(parent, notification_manager=mgr)
+    panel = SettingsPanel(parent, notification_manager=mgr, auth_controller=auth_ctrl, user=user)
 """
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ import logging
 from typing import Optional
 
 import customtkinter as ctk
+from tkinter import messagebox
 
 from ui.theme import FONT_TITLE, FONT_NORMAL, FONT_SMALL, COLORS
 
@@ -22,11 +23,17 @@ class SettingsPanel(ctk.CTkFrame):
     def __init__(self,
                  master,
                  notification_manager=None,
+                 auth_controller=None,
+                 user=None,
+                 on_logout=None,
                  on_theme_change=None,
                  **kwargs):
         super().__init__(master, **kwargs)
 
         self._notif_mgr = notification_manager
+        self._auth_ctrl = auth_controller
+        self._user = user
+        self._on_logout = on_logout
         self._on_theme_change = on_theme_change
         self._is_fullscreen = False
 
@@ -57,10 +64,100 @@ class SettingsPanel(ctk.CTkFrame):
 
         row = 0
 
-        # === SECCIÓN: INTERFAZ ===
-        ctk.CTkLabel(content, text="Interfaz", font=("Roboto", 14, "bold"),
+        # ============================================================
+        # === SECCIÓN: CUENTA DE USUARIO ===
+        # ============================================================
+        ctk.CTkLabel(content, text="Cuenta de usuario", font=("Roboto", 14, "bold"),
                      text_color=COLORS["accent"]).grid(
             row=row, column=0, sticky="w", pady=(16, 8))
+        row += 1
+
+        # Info del usuario actual
+        if self._user:
+            user_info = f"Usuario: {self._user.username}  |  Rol: {self._user.role.upper()}"
+            ctk.CTkLabel(content, text=user_info, font=FONT_NORMAL,
+                         text_color=("gray40", "gray60")).grid(
+                row=row, column=0, sticky="w", pady=(0, 12))
+            row += 1
+
+        # --- Cambiar contraseña ---
+        pass_frame = ctk.CTkFrame(content, fg_color="transparent")
+        pass_frame.grid(row=row, column=0, sticky="ew", pady=8)
+        pass_frame.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(pass_frame, text="Cambiar contraseña", font=("Roboto", 12, "bold")).grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+
+        # Contraseña actual
+        ctk.CTkLabel(pass_frame, text="Actual:", font=FONT_SMALL).grid(
+            row=1, column=0, sticky="w", padx=(0, 8), pady=2)
+        self._entry_old_pass = ctk.CTkEntry(
+            pass_frame, font=FONT_NORMAL, show="●", placeholder_text="Contraseña actual")
+        self._entry_old_pass.grid(row=1, column=1, sticky="ew", pady=2)
+
+        # Nueva contraseña
+        ctk.CTkLabel(pass_frame, text="Nueva:", font=FONT_SMALL).grid(
+            row=2, column=0, sticky="w", padx=(0, 8), pady=2)
+        self._entry_new_pass = ctk.CTkEntry(
+            pass_frame, font=FONT_NORMAL, show="●", placeholder_text="Mínimo 4 caracteres")
+        self._entry_new_pass.grid(row=2, column=1, sticky="ew", pady=2)
+
+        # Confirmar nueva
+        ctk.CTkLabel(pass_frame, text="Confirmar:", font=FONT_SMALL).grid(
+            row=3, column=0, sticky="w", padx=(0, 8), pady=2)
+        self._entry_confirm_pass = ctk.CTkEntry(
+            pass_frame, font=FONT_NORMAL, show="●", placeholder_text="Repite la nueva")
+        self._entry_confirm_pass.grid(row=3, column=1, sticky="ew", pady=2)
+
+        # Mostrar contraseñas
+        self._show_pass = ctk.CTkCheckBox(
+            pass_frame, text="Mostrar contraseñas", font=FONT_SMALL,
+            command=self._toggle_password_visibility)
+        self._show_pass.grid(row=4, column=1, sticky="w", pady=(4, 8))
+
+        # Botón cambiar
+        self._lbl_pass_error = ctk.CTkLabel(
+            pass_frame, text="", font=FONT_SMALL, text_color=COLORS["fault"])
+        self._lbl_pass_error.grid(row=5, column=0, columnspan=2, sticky="w", pady=(0, 4))
+
+        ctk.CTkButton(
+            pass_frame,
+            text="Cambiar contraseña",
+            font=FONT_NORMAL,
+            height=36,
+            command=self._on_change_password,
+        ).grid(row=6, column=0, columnspan=2, sticky="w", pady=(0, 8))
+
+        row += 1
+
+        # Separador
+        ctk.CTkFrame(content, height=1, fg_color=COLORS["border"]).grid(
+            row=row, column=0, sticky="ew", pady=12)
+        row += 1
+
+        # --- Botón Cerrar Sesión ---
+        ctk.CTkButton(
+            content,
+            text="🚪  Cerrar sesión",
+            font=FONT_NORMAL,
+            height=44,
+            fg_color="#EF4444",
+            hover_color="#B91C1C",
+            command=self._on_logout_clicked,
+        ).grid(row=row, column=0, sticky="ew", pady=(8, 16))
+        row += 1
+
+        # Separador
+        ctk.CTkFrame(content, height=1, fg_color=COLORS["border"]).grid(
+            row=row, column=0, sticky="ew", pady=12)
+        row += 1
+
+        # ============================================================
+        # === SECCIÓN: INTERFAZ ===
+        # ============================================================
+        ctk.CTkLabel(content, text="Interfaz", font=("Roboto", 14, "bold"),
+                     text_color=COLORS["accent"]).grid(
+            row=row, column=0, sticky="w", pady=(8, 8))
         row += 1
 
         # Pantalla completa
@@ -99,7 +196,9 @@ class SettingsPanel(ctk.CTkFrame):
             row=row, column=0, sticky="ew", pady=12)
         row += 1
 
+        # ============================================================
         # === SECCIÓN: NOTIFICACIONES ===
+        # ============================================================
         ctk.CTkLabel(content, text="Notificaciones", font=("Roboto", 14, "bold"),
                      text_color=COLORS["accent"]).grid(
             row=row, column=0, sticky="w", pady=(8, 8))
@@ -179,7 +278,9 @@ class SettingsPanel(ctk.CTkFrame):
             row=row, column=0, sticky="ew", pady=12)
         row += 1
 
+        # ============================================================
         # === SECCIÓN: DATOS ===
+        # ============================================================
         ctk.CTkLabel(content, text="Datos", font=("Roboto", 14, "bold"),
                      text_color=COLORS["accent"]).grid(
             row=row, column=0, sticky="w", pady=(8, 8))
@@ -202,11 +303,61 @@ class SettingsPanel(ctk.CTkFrame):
             row=row, column=0, pady=(24, 8))
 
     # ------------------------------------------------------------------
-    # Callbacks
+    # Callbacks de Cuenta
+    # ------------------------------------------------------------------
+
+    def _toggle_password_visibility(self):
+        show = "" if self._show_pass.get() else "●"
+        self._entry_old_pass.configure(show=show)
+        self._entry_new_pass.configure(show=show)
+        self._entry_confirm_pass.configure(show=show)
+
+    def _on_change_password(self):
+        old = self._entry_old_pass.get()
+        new = self._entry_new_pass.get()
+        confirm = self._entry_confirm_pass.get()
+
+        if not old or not new:
+            self._lbl_pass_error.configure(text="Todos los campos son obligatorios")
+            return
+
+        if len(new) < 4:
+            self._lbl_pass_error.configure(text="La nueva contraseña debe tener al menos 4 caracteres")
+            return
+
+        if new != confirm:
+            self._lbl_pass_error.configure(text="Las contraseñas nuevas no coinciden")
+            return
+
+        if not self._auth_ctrl or not self._user:
+            self._lbl_pass_error.configure(text="Error: no hay sesión activa")
+            return
+
+        ok, msg = self._auth_ctrl.change_password(self._user, old, new)
+        if ok:
+            self._lbl_pass_error.configure(text="✅ Contraseña cambiada exitosamente", text_color=COLORS["accent"])
+            self._entry_old_pass.delete(0, "end")
+            self._entry_new_pass.delete(0, "end")
+            self._entry_confirm_pass.delete(0, "end")
+            self.after(3000, lambda: self._lbl_pass_error.configure(
+                text="", text_color=COLORS["fault"]))
+            logger.info("Contraseña cambiada para usuario: %s", self._user.username)
+        else:
+            self._lbl_pass_error.configure(text=msg, text_color=COLORS["fault"])
+
+    def _on_logout_clicked(self):
+        confirm = messagebox.askyesno(
+            "Cerrar sesión",
+            f"¿Estás seguro de que querés cerrar la sesión de {self._user.username if self._user else 'usuario'}?"
+        )
+        if confirm and self._on_logout:
+            self._on_logout()
+
+    # ------------------------------------------------------------------
+    # Callbacks de Interfaz
     # ------------------------------------------------------------------
 
     def _toggle_fullscreen(self):
-        """Alterna modo pantalla completa en la ventana principal."""
         root = self.winfo_toplevel()
         if not isinstance(root, ctk.CTk):
             return
@@ -232,6 +383,10 @@ class SettingsPanel(ctk.CTkFrame):
         if self._on_theme_change:
             self._on_theme_change(theme)
         logger.info("Tema cambiado a: %s", theme)
+
+    # ------------------------------------------------------------------
+    # Callbacks de Notificaciones
+    # ------------------------------------------------------------------
 
     def _on_sound_toggle(self):
         if self._notif_mgr:
