@@ -86,14 +86,20 @@ void WiFiCommunication::send(const char* data) {
 
 void WiFiCommunication::appendToBuffer(char c) {
     uint16_t nextHead = (_inputHead + 1) % INPUT_BUFFER_SIZE;
-    if (nextHead == _inputTail) return; // overflow, descartar
+    if (nextHead == _inputTail) return;
     _inputBuffer[_inputHead] = c;
     _inputHead = nextHead;
 }
 
 void WiFiCommunication::onMessage(char* topic, uint8_t* payload, unsigned int length) {
     if (!_instance) return;
-    if (strncmp(topic, _instance->_topicControl, strlen(_instance->_topicControl)) != 0) return;
+
+    // FIX: comparación exacta de topic
+    size_t topicControlLen = strlen(_instance->_topicControl);
+    if (strlen(topic) != topicControlLen ||
+        strncmp(topic, _instance->_topicControl, topicControlLen) != 0) {
+        return;
+    }
 
     for (unsigned int i = 0; i < length && i < 255; i++) {
         _instance->appendToBuffer((char)payload[i]);

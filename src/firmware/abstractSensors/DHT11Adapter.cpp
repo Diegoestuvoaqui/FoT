@@ -1,28 +1,28 @@
 // src/firmware/abstractSensors/DHT11Adapter.cpp
 #include "DHT11Adapter.h"
-#include <math.h>
+//#include <cmath.h>  // FIX: cmath en lugar de math.h
+#include "math.h"
 
-DHT11Adapter::DHT11Adapter(uint8_t pin, const char* name)
-    : dht(pin, DHT11), pin(pin), _lastTemp(NAN), _lastHum(NAN) {
-    dht.begin();
+DHT11Adapter::DHT11Adapter(DHT* dht, const char* name)
+    : _dht(dht), _lastTemp(NAN), _lastHum(NAN) {
     _readTemp = (strcmp(name, "temp") == 0);
 }
 
 float DHT11Adapter::read() {
-    if (_readTemp) {
-        _lastTemp = dht.readTemperature();
-        return _lastTemp;
-    } else {
-        _lastHum = dht.readHumidity();
-        return _lastHum;
-    }
+    // FIX: leemos ambos valores de una sola vez para evitar doble lectura del bus
+    _lastTemp = _dht->readTemperature();
+    _lastHum  = _dht->readHumidity();
+
+    return _readTemp ? _lastTemp : _lastHum;
 }
 
 bool DHT11Adapter::isValid() {
     if (_readTemp) {
-        return !isnan(_lastTemp) && _lastTemp >= -10.0f && _lastTemp <= 60.0f;
+        // FIX: rangos ajustados a DHT11 real: 0–50 °C
+        return !isnan(_lastTemp) && _lastTemp >= 0.0f && _lastTemp <= 50.0f;
     } else {
-        return !isnan(_lastHum) && _lastHum >= 0.0f && _lastHum <= 100.0f;
+        // FIX: rangos ajustados a DHT11 real: 20–90 % HR
+        return !isnan(_lastHum) && _lastHum >= 20.0f && _lastHum <= 90.0f;
     }
 }
 

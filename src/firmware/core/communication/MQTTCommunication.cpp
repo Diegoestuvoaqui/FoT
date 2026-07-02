@@ -113,13 +113,13 @@ void MQTTCommunication::appendToBuffer(char c) {
 void MQTTCommunication::onMessage(char* topic, uint8_t* payload, unsigned int length) {
     if (!_instance) return;
 
-    // Solo procesamos mensajes del topic de control
-    if (strncmp(topic, _instance->_topicControl,
-                strlen(_instance->_topicControl)) != 0) {
+    // FIX: comparación exacta de topic (longitud + contenido)
+    size_t topicControlLen = strlen(_instance->_topicControl);
+    if (strlen(topic) != topicControlLen ||
+        strncmp(topic, _instance->_topicControl, topicControlLen) != 0) {
         return;
     }
 
-    // Copiar payload al buffer circular para que read() lo consuma
     for (unsigned int i = 0; i < length && i < 255; i++) {
         _instance->appendToBuffer((char)payload[i]);
     }

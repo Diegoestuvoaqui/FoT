@@ -7,15 +7,15 @@
 
 class DHT11Adapter : public ISensor {
 private:
-    DHT dht;
-    uint8_t pin;
+    DHT* _dht;          // FIX: puntero a DHT compartido, no instancia propia
+    uint8_t _pin;
     float _lastTemp;
     float _lastHum;
-    bool _readTemp;  // true = temp, false = hum
+    bool _readTemp;     // true = temp, false = hum
 
 public:
-    // name: "temp" o "hum"
-    DHT11Adapter(uint8_t pin, const char* name);
+    // FIX: ahora recibe el DHT ya inicializado y el modo
+    DHT11Adapter(DHT* dht, const char* name);
 
     float read() override;
     bool isValid() override;

@@ -55,7 +55,7 @@ class SerialBridge:
             logger.info("Desconectado de %s", self.port)
 
     def is_connected(self) -> bool:
-        return self._serial is not None and self._serial.is_open
+        return self._serial is not None and self._serial.is_open and self._running
 
     def send_command(self, cmd_dict: dict) -> None:
         if not self.is_connected():

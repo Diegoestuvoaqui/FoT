@@ -1,14 +1,13 @@
-// src/firmware/sketches/dht11/main.cpp
-#include "DHT11Sketch.h"
+// src/firmware/sketches/uno_r3_dht11/main.cpp
+#include "UNOR3_DHT11_Sketch.h"
 #include "../../core/communication/SerialCommunication.h"
 #include "../../core/commands/CommandParser.h"
 #include "../../core/commands/CommandInvoker.h"
 
-// --- Configuración ---
 #define SERIAL_BAUD 115200
+#define CMD_BUFFER_SIZE 128
 
-// --- Instancias globales ---
-DHT11Sketch sketch;
+UNOR3_DHT11_Sketch sketch;
 SerialCommunication comm(SERIAL_BAUD);
 
 void setup() {
@@ -19,21 +18,23 @@ void setup() {
 
 void loop() {
     sketch.loop();
-    
-    // Leer comandos del puerto serial y ejecutarlos
-    static String buffer;
+
+    static char buffer[CMD_BUFFER_SIZE];
+    static uint8_t bufIndex = 0;
+
     while (comm.available()) {
         int c = comm.read();
         if (c == '\n' || c == '\r') {
-            if (buffer.length() > 0) {
-                ICommand* cmd = CommandParser::parse(buffer.c_str());
+            if (bufIndex > 0) {
+                buffer[bufIndex] = '\0';
+                ICommand* cmd = CommandParser::parse(buffer);
                 if (cmd) {
                     CommandInvoker::executeImmediate(cmd, sketch);
                 }
-                buffer = "";
+                bufIndex = 0;
             }
-        } else {
-            buffer += (char)c;
+        } else if (bufIndex < CMD_BUFFER_SIZE - 1) {
+            buffer[bufIndex++] = (char)c;
         }
     }
 }

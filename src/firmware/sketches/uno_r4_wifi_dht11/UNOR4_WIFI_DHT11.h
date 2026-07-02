@@ -1,12 +1,12 @@
-// src/firmware/sketches/dht11/DHT11Sketch.h
+// src/firmware/sketches/uno_r4_wifi_dht11/UNOR4_WIFI_DHT11.h
 #ifndef DHT11_SKETCH_H
 #define DHT11_SKETCH_H
 
 #include "../../core/sketches/SensorSketch.h"
 
-class DHT11Sketch : public SensorSketch {
+class UNOR4_WIFI_DHT11 : public SensorSketch {
 public:
-    DHT11Sketch();
+    UNOR4_WIFI_DHT11();
 
     void setup() override;
     void loop() override;

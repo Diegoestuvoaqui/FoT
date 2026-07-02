@@ -134,7 +134,7 @@ def _build_main(root: ctk.CTk,
     # ------------------------------------------------------------------
     # Registro de observadores MQTT (para placas WiFi)
     # ------------------------------------------------------------------
-    mqtt_bus.register(data_receiver)
+    #mqtt_bus.register(data_receiver)
 
     # ------------------------------------------------------------------
     # Cierre limpio
@@ -142,7 +142,7 @@ def _build_main(root: ctk.CTk,
     def on_close() -> None:
         logger.info("Cerrando IoT Estación Base")
         sensor_manager.disconnect_all()
-        mqtt_bus.unregister(data_receiver)
+        #mqtt_bus.unregister(data_receiver)
         mqtt_bus.stop()
         event_controller.cleanup()
         board_controller.cleanup()
@@ -173,6 +173,8 @@ def main() -> None:
     auth_service = AuthService(db)
     auth_service.ensure_admin_exists()
 
+
+    #el SUBJECT de los WiFiBridge
     mqtt_bus = MQTTEventBus("localhost", 1883)
     try:
         mqtt_bus.start()
@@ -212,7 +214,7 @@ def main() -> None:
         root.title("IoT — Estación Base")
         root.resizable(True, True)
         root.minsize(960, 640)
-        root.geometry("960x640")
+        root.geometry("960x960")
 
         # Resetear configuraciones de grid del login
         for i in range(root.grid_size()[1]):

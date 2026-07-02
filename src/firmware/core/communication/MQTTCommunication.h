@@ -7,7 +7,14 @@
 
 #ifdef ARDUINO
 #include <Arduino.h>
+// FIX: avr/wdt.h solo existe en plataformas AVR (UNO R3, Nano, etc.)
+//      El UNO R4 WiFi usa Renesas RA, no AVR.
+#if defined(__AVR__)
 #include <avr/wdt.h>
+#else
+// En plataformas no-AVR, wdt_reset() no hace nada
+#define wdt_reset()
+#endif
 #else
 #include "ArduinoMock.h"
 #define wdt_reset()
@@ -29,7 +36,6 @@ private:
     static MQTTCommunication* _instance;
     static void onMessage(char* topic, uint8_t* payload, unsigned int length);
 
-    // Buffer circular para simular read() desde callback MQTT
     static constexpr uint16_t INPUT_BUFFER_SIZE = 256;
     char _inputBuffer[INPUT_BUFFER_SIZE];
     uint16_t _inputHead;
@@ -54,7 +60,6 @@ public:
     void loop() override;
     const char* name() const override { return "mqtt"; }
 
-    // MQTT específico
     bool connect();
     void subscribe(const char* topic);
     void publishSensorData(float humSuelo, float humAire, float temp, uint32_t uptime);

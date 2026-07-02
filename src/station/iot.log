@@ -391,3 +391,97 @@
 2026-06-28 15:08:03,956 INFO ui.main_window — Campana de notificaciones clickeada
 2026-06-28 15:08:18,632 INFO __main__ — Cerrando IoT Estación Base
 2026-06-28 15:08:19,649 INFO __main__ — IoT Estación Base cerrada
+2026-06-29 11:44:46,998 INFO __main__ — Arrancando IoT Estación Base
+2026-06-29 11:44:46,999 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/iot.db
+2026-06-29 11:44:47,003 INFO __main__ — MQTT broker local en localhost:1883
+2026-06-29 11:44:47,086 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-29 11:44:47,254 INFO __main__ — UI lista, entrando en mainloop (login)
+2026-06-29 11:45:05,455 INFO service.auth_service — Login exitoso: admin (role=admin)
+2026-06-29 11:45:05,462 INFO __main__ — Usuario autenticado: admin (role=admin)
+2026-06-29 11:45:05,462 INFO __main__ — Cargando boards para usuario admin
+2026-06-29 11:45:06,374 INFO ui.widgets.notification_manager — Notificación [success]: Sesión iniciada — Bienvenido, admin
+2026-06-29 11:45:06,374 INFO __main__ — UI lista, entrando en mainloop
+2026-06-29 11:45:17,363 INFO ui.main_window — Campana de notificaciones clickeada
+2026-06-29 11:45:19,532 INFO ui.main_window — Campana de notificaciones clickeada
+2026-06-29 11:45:43,866 INFO __main__ — Cerrando IoT Estación Base
+2026-06-29 11:45:44,163 INFO __main__ — IoT Estación Base cerrada
+2026-06-30 10:50:17,398 INFO __main__ — Arrancando IoT Estación Base
+2026-06-30 10:50:17,400 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/iot.db
+2026-06-30 10:50:17,403 INFO __main__ — MQTT broker local en localhost:1883
+2026-06-30 10:50:17,483 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-30 10:50:17,650 INFO __main__ — UI lista, entrando en mainloop (login)
+2026-06-30 10:50:22,814 INFO service.auth_service — Login exitoso: admin (role=admin)
+2026-06-30 10:50:22,820 INFO __main__ — Usuario autenticado: admin (role=admin)
+2026-06-30 10:50:22,820 INFO __main__ — Cargando boards para usuario admin
+2026-06-30 10:50:23,723 INFO ui.widgets.notification_manager — Notificación [success]: Sesión iniciada — Bienvenido, admin
+2026-06-30 10:50:23,723 INFO __main__ — UI lista, entrando en mainloop
+2026-06-30 10:50:43,461 INFO service.auth_service — Cuenta desactivada: usuario id=2 (por admin admin)
+2026-06-30 10:50:43,547 INFO ui.widgets.notification_manager — Notificación [info]: Cuenta desactivada — Usuario ID 2 desactivada
+2026-06-30 12:16:34,955 INFO ui.main_window — Campana de notificaciones clickeada
+2026-06-30 12:16:35,511 INFO ui.main_window — Campana de notificaciones clickeada
+2026-06-30 12:16:35,737 INFO ui.main_window — Campana de notificaciones clickeada
+2026-06-30 12:16:40,846 INFO __main__ — Cerrando IoT Estación Base
+2026-06-30 12:16:41,740 INFO __main__ — IoT Estación Base cerrada
+2026-06-30 13:34:58,236 INFO __main__ — Arrancando IoT Estación Base
+2026-06-30 13:34:58,237 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/iot.db
+2026-06-30 13:34:58,241 INFO __main__ — MQTT broker local en localhost:1883
+2026-06-30 13:34:58,314 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-30 13:34:58,489 INFO __main__ — UI lista, entrando en mainloop (login)
+2026-06-30 13:35:05,787 INFO service.auth_service — Login exitoso: admin (role=admin)
+2026-06-30 13:35:05,794 INFO __main__ — Usuario autenticado: admin (role=admin)
+2026-06-30 13:35:05,794 INFO __main__ — Cargando boards para usuario admin
+2026-06-30 13:35:06,703 INFO ui.widgets.notification_manager — Notificación [success]: Sesión iniciada — Bienvenido, admin
+2026-06-30 13:35:06,703 INFO __main__ — UI lista, entrando en mainloop
+2026-06-30 13:35:26,033 INFO ui.main_window — Campana de notificaciones clickeada
+2026-06-30 13:35:33,383 INFO __main__ — Cerrando IoT Estación Base
+2026-06-30 13:35:34,370 INFO __main__ — IoT Estación Base cerrada
+2026-06-30 13:37:27,836 INFO __main__ — Arrancando IoT Estación Base
+2026-06-30 13:37:27,837 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/iot.db
+2026-06-30 13:37:27,841 INFO __main__ — MQTT broker local en localhost:1883
+2026-06-30 13:37:27,914 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-06-30 13:37:28,093 INFO __main__ — UI lista, entrando en mainloop (login)
+2026-06-30 13:37:33,392 INFO service.auth_service — Login exitoso: admin (role=admin)
+2026-06-30 13:37:33,399 INFO __main__ — Usuario autenticado: admin (role=admin)
+2026-06-30 13:37:33,399 INFO __main__ — Cargando boards para usuario admin
+2026-06-30 13:37:34,286 INFO ui.widgets.notification_manager — Notificación [success]: Sesión iniciada — Bienvenido, admin
+2026-06-30 13:37:34,287 INFO __main__ — UI lista, entrando en mainloop
+2026-06-30 13:37:52,692 INFO __main__ — Cerrando IoT Estación Base
+2026-06-30 13:37:52,964 INFO __main__ — IoT Estación Base cerrada
+2026-07-01 08:58:59,148 INFO __main__ — Arrancando IoT Estación Base
+2026-07-01 08:58:59,150 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/iot.db
+2026-07-01 08:58:59,154 INFO __main__ — MQTT broker local en localhost:1883
+2026-07-01 08:58:59,205 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-07-01 08:58:59,303 INFO __main__ — UI lista, entrando en mainloop (login)
+2026-07-01 08:59:04,131 INFO service.auth_service — Login exitoso: admin (role=admin)
+2026-07-01 08:59:04,136 INFO __main__ — Usuario autenticado: admin (role=admin)
+2026-07-01 08:59:04,136 INFO __main__ — Cargando boards para usuario admin
+2026-07-01 08:59:04,811 INFO ui.widgets.notification_manager — Notificación [success]: Sesión iniciada — Bienvenido, admin
+2026-07-01 08:59:04,811 INFO __main__ — UI lista, entrando en mainloop
+2026-07-01 09:00:07,322 INFO __main__ — Cerrando IoT Estación Base
+2026-07-01 09:00:08,298 INFO __main__ — IoT Estación Base cerrada
+2026-07-01 09:01:06,826 INFO __main__ — Arrancando IoT Estación Base
+2026-07-01 09:01:06,827 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/iot.db
+2026-07-01 09:01:06,831 INFO __main__ — MQTT broker local en localhost:1883
+2026-07-01 09:01:06,835 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-07-01 09:01:06,995 INFO __main__ — UI lista, entrando en mainloop (login)
+2026-07-01 09:01:14,277 INFO service.auth_service — Login exitoso: admin (role=admin)
+2026-07-01 09:01:14,282 INFO __main__ — Usuario autenticado: admin (role=admin)
+2026-07-01 09:01:14,283 INFO __main__ — Cargando boards para usuario admin
+2026-07-01 09:01:14,780 INFO ui.widgets.notification_manager — Notificación [success]: Sesión iniciada — Bienvenido, admin
+2026-07-01 09:01:14,781 INFO __main__ — UI lista, entrando en mainloop
+2026-07-01 09:02:14,995 INFO __main__ — Cerrando IoT Estación Base
+2026-07-01 09:02:15,996 INFO __main__ — IoT Estación Base cerrada
+2026-07-01 13:20:15,972 INFO __main__ — Arrancando IoT Estación Base
+2026-07-01 13:20:15,974 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/iot.db
+2026-07-01 13:20:15,980 INFO __main__ — MQTT broker local en localhost:1883
+2026-07-01 13:20:15,985 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-07-01 13:20:16,230 INFO __main__ — UI lista, entrando en mainloop (login)
+2026-07-01 13:20:21,719 INFO service.auth_service — Login exitoso: admin (role=admin)
+2026-07-01 13:20:21,725 INFO __main__ — Usuario autenticado: admin (role=admin)
+2026-07-01 13:20:21,725 INFO __main__ — Cargando boards para usuario admin
+2026-07-01 13:20:22,607 INFO ui.widgets.notification_manager — Notificación [success]: Sesión iniciada — Bienvenido, admin
+2026-07-01 13:20:22,607 INFO __main__ — UI lista, entrando en mainloop
+2026-07-01 13:20:40,862 INFO service.auth_service — Usuario eliminado: 2 (por admin admin)
+2026-07-01 13:20:40,911 INFO ui.widgets.notification_manager — Notificación [info]: Usuario eliminado — El usuario ID 2 fue eliminado
+2026-07-01 13:20:53,446 INFO __main__ — Cerrando IoT Estación Base
+2026-07-01 13:20:54,122 INFO __main__ — IoT Estación Base cerrada
