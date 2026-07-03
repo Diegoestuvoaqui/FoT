@@ -8,6 +8,7 @@ import customtkinter as ctk
 
 from ui.theme import FONT_TITLE, FONT_NORMAL, FONT_SMALL, COLORS
 from ui.widgets.event_log import EventLog
+from ui.widgets.sensor_chart import SensorChart
 
 
 class DHT11Panel(ctk.CTkFrame):
@@ -21,12 +22,15 @@ class DHT11Panel(ctk.CTkFrame):
 
         self.grid_columnconfigure(0, weight=1, minsize=240)
         self.grid_columnconfigure(1, weight=3)
-        self.grid_rowconfigure(0, weight=3)
-        self.grid_rowconfigure(1, weight=1, minsize=150)
+        self.grid_rowconfigure(0, weight=2)      # ← más espacio para el gráfico
+        self.grid_rowconfigure(1, weight=1, minsize=120)
 
         self._on_select_board = on_select_board
         self._boards: list = []
         self._selected_board_id: str | None = None
+
+        # Cache de lecturas para el gráfico
+        self._readings_cache: list[dict] = []
 
         self._build_left()
         self._build_right()
@@ -46,12 +50,11 @@ class DHT11Panel(ctk.CTkFrame):
         self._list_frame.grid(row=1, column=0, sticky="nsew", padx=6, pady=4)
         self._list_frame.grid_columnconfigure(0, weight=1)
 
-
     def _build_right(self):
         right = ctk.CTkFrame(self)
         right.grid(row=0, column=1, sticky="nsew", padx=(4, 8), pady=8)
         right.grid_columnconfigure(0, weight=1)
-        right.grid_rowconfigure(6, weight=1)
+        right.grid_rowconfigure(2, weight=1)   # ← gráfico expande
 
         row = 0
         self._lbl_title = ctk.CTkLabel(
@@ -75,7 +78,7 @@ class DHT11Panel(ctk.CTkFrame):
         self._lbl_status.grid(row=row, column=1, padx=12, pady=4, sticky="w")
         row += 1
 
-        # Tarjetas de lectura
+        # Tarjetas de lectura actual
         self._sensor_labels = {}
         for label, key, unit in [("Temperatura", "temp", "°C"), ("Humedad", "hum", "%")]:
             frame = ctk.CTkFrame(right, corner_radius=8, border_width=1, border_color="#3F3F3F")
@@ -97,14 +100,13 @@ class DHT11Panel(ctk.CTkFrame):
             row=row, column=0, columnspan=2, sticky="ew", padx=12, pady=6)
         row += 1
 
-        # Tabla de historial
+        # ← NUEVO: SensorChart en vez de tabla de texto plano
         ctk.CTkLabel(right, text="Historial de lecturas", font=FONT_TITLE).grid(
             row=row, column=0, columnspan=2, padx=12, pady=(0, 8), sticky="w")
         row += 1
 
-        self._history_table = ctk.CTkTextbox(
-            right, font=("Courier New", 11), state="disabled", wrap="none")
-        self._history_table.grid(row=row, column=0, columnspan=2, sticky="nsew", padx=12, pady=(0, 8))
+        self._sensor_chart = SensorChart(right)
+        self._sensor_chart.grid(row=row, column=0, columnspan=2, sticky="nsew", padx=12, pady=(0, 8))
 
     def _build_bottom(self):
         self.event_log = EventLog(self)
@@ -145,11 +147,13 @@ class DHT11Panel(ctk.CTkFrame):
             text_color=COLORS["accent"]
         )
 
-        # Refrescar historial
-        self._refresh_history(board_id)
+        # ← NUEVO: Agregar al gráfico en tiempo real
+        self._add_reading_to_chart(readings, ts)
 
     def show_history(self, board_id: str, readings: list[dict]):
-        self._refresh_history_table(readings)
+        """Carga historial desde DB al seleccionar una placa."""
+        self._readings_cache = readings
+        self._refresh_chart_from_cache()
 
     def add_event(self, text: str, tipo: str = ""):
         self.event_log.add_line(text, tipo)
@@ -189,26 +193,88 @@ class DHT11Panel(ctk.CTkFrame):
         if self._on_select_board:
             self._on_select_board(board_id)
 
+    def _add_reading_to_chart(self, readings: dict, ts: int):
+        """Agrega un punto de datos al gráfico en tiempo real."""
+        from datetime import datetime
 
-    def _refresh_history(self, board_id: str):
-        # Llamar a DB para obtener últimas lecturas
-        pass
+        now = datetime.now()
 
-    def _refresh_history_table(self, readings: list[dict]):
-        self._history_table.configure(state="normal")
-        self._history_table.delete("1.0", "end")
+        # Extraer valores del dict de sensores
+        temp = None
+        hum = None
 
-        header = f"{'Fecha':<20} {'Sensor':<12} {'Valor':<10} {'Unidad':<8}\\n"
-        self._history_table.insert("end", header)
-        self._history_table.insert("end", "—" * 55 + "\\n")
+        temp_data = readings.get("temp", {})
+        if isinstance(temp_data, dict) and "value" in temp_data:
+            temp = float(temp_data["value"])
 
-        for r in readings[:50]:
-            ts = r.get("ts_base", "")[:19]
-            sensor = r.get("sensor_type", "—")
+        hum_data = readings.get("hum", {})
+        if isinstance(hum_data, dict) and "value" in hum_data:
+            hum = float(hum_data["value"])
+
+        # Agregar a cache
+        self._readings_cache.append({
+            "ts_base": now.isoformat(),
+            "sensor_type": "temp",
+            "valor": temp,
+            "unidad": "°C",
+        })
+        self._readings_cache.append({
+            "ts_base": now.isoformat(),
+            "sensor_type": "hum",
+            "valor": hum,
+            "unidad": "%",
+        })
+
+        # Limitar cache a últimos 500 puntos
+        if len(self._readings_cache) > 500:
+            self._readings_cache = self._readings_cache[-500:]
+
+        self._refresh_chart_from_cache()
+
+    def _refresh_chart_from_cache(self):
+        """Reconstruye el gráfico desde la cache de lecturas."""
+        from datetime import datetime
+
+        timestamps = []
+        temps = []
+        hums = []
+
+        # Agrupar por timestamp (aproximado, mismo segundo)
+        temp_by_ts: dict[str, float | None] = {}
+        hum_by_ts: dict[str, float | None] = {}
+
+        for r in self._readings_cache:
+            ts_str = r.get("ts_base", "")
+            if len(ts_str) >= 19:
+                ts_key = ts_str[:19]  # "YYYY-MM-DD HH:MM:SS"
+            else:
+                continue
+
+            sensor = r.get("sensor_type")
             val = r.get("valor")
-            val_str = f"{val:.1f}" if val is not None else "—"
-            unit = r.get("unidad", "—")
-            line = f"{ts:<20} {sensor:<12} {val_str:<10} {unit:<8}\\n"
-            self._history_table.insert("end", line)
 
-        self._history_table.configure(state="disabled")
+            if sensor == "temp" and val is not None:
+                temp_by_ts[ts_key] = val
+            elif sensor == "hum" and val is not None:
+                hum_by_ts[ts_key] = val
+
+        # Unir timestamps
+        all_ts = sorted(set(temp_by_ts.keys()) | set(hum_by_ts.keys()))
+
+        for ts_key in all_ts:
+            try:
+                dt = datetime.strptime(ts_key, "%Y-%m-%d %H:%M:%S")
+            except ValueError:
+                continue
+            timestamps.append(dt)
+            temps.append(temp_by_ts.get(ts_key))
+            hums.append(hum_by_ts.get(ts_key))
+
+        # El SensorChart espera: timestamps, hum_suelo, hum_aire, temp
+        # Para DHT11: hum_aire = hums, temp = temps, hum_suelo = None
+        self._sensor_chart.update_data(
+            timestamps=timestamps,
+            hum_suelo=[None] * len(timestamps),  # DHT11 no tiene humedad de suelo
+            hum_aire=hums,
+            temp=temps,
+        )

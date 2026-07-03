@@ -11,11 +11,10 @@ class BoardController:
     def __init__(self, board_service: BoardService):
         self._service = board_service
         self._on_board_updated = None
-        # ← CORREGIDO: NO registrar observer aquí, se hace en set_ui_callback
 
     def set_ui_callback(self, callback):
         self._on_board_updated = callback
-        self._service.add_observer(self._on_service_board_changed)  # ← MOVIDO aquí
+        self._service.add_observer(self._on_service_board_changed)
 
     def _on_service_board_changed(self, board: Board):
         if self._on_board_updated:
@@ -26,6 +25,9 @@ class BoardController:
 
     def register_bluetooth_board(self, board_id: str, port: str) -> Board:
         return self._service.register_board(board_id, port, "bluetooth")
+
+    def register_wifi_board(self, board_id: str, ip: str) -> Board:
+        return self._service.register_wifi_board(board_id, ip)
 
     def connect(self, board_id: str) -> tuple[bool, str]:
         return self._service.connect_board(board_id)
@@ -51,6 +53,11 @@ class BoardController:
     def read_now(self, board_id: str) -> bool:
         return self._service.request_read(board_id)
 
+    def get_readings(self, board_id: str, sensor_type: str | None = None,
+                     limit: int = 100, start=None, end=None) -> list[dict]:
+        return self._service.get_readings(board_id, sensor_type, limit, start, end)
+
     def cleanup(self):
         if self._on_board_updated:
-            self._service.remove_observer()
+            self._service.remove_observer(self._on_service_board_changed)
+            self._on_board_updated = None

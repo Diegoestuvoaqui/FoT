@@ -1,3 +1,4 @@
+# logic/device_scanner.py
 """
 logic/device_scanner.py
 Hilo daemon que escanea puertos USB cada 3 segundos y notifica cambios.
@@ -9,6 +10,20 @@ import time
 import serial.tools.list_ports
 
 logger = logging.getLogger(__name__)
+
+
+# VIDs conocidos de chips usados en Arduinos y compatibles
+KNOWN_ARDUINO_VIDS = {
+    0x0403,   # FTDI
+    0x1A86,   # WCH (CH340/CH341)
+    0x10C4,   # Silicon Labs (CP210x)
+    0x2341,   # Arduino
+    0x2A03,   # Arduino (Genuino)
+    0x239A,   # Adafruit
+    0x0483,   # STMicroelectronics
+    0x16C0,   # Teensy
+    0x0483,   # STM32
+}
 
 
 class USBScanner(threading.Thread):
@@ -28,9 +43,10 @@ class USBScanner(threading.Thread):
 
                 current = {}
                 for p in ports:
-                    is_arduino_port = ("ttyUSB" in p.device or "ttyACM" in p.device)
-                    has_serial = bool(p.serial_number)
-                    if is_arduino_port and has_serial:
+                    # ← CORREGIDO: detectar por nombre de dispositivo O VID conocido
+                    is_arduino_port = self._is_likely_arduino(p)
+                    
+                    if is_arduino_port:
                         # Extraer todos los datos de fábrica relevantes
                         port_data = {
                             "device": p.device,
@@ -38,7 +54,7 @@ class USBScanner(threading.Thread):
                             "hwid": p.hwid,
                             "vid": p.vid,
                             "pid": p.pid,
-                            "serial_number": p.serial_number,
+                            "serial_number": p.serial_number,  # puede ser None
                             "manufacturer": p.manufacturer,
                             "product": p.product,
                             "location": p.location,
@@ -50,12 +66,13 @@ class USBScanner(threading.Thread):
 
                 for port_data in added:
                     logger.info(
-                        "Nuevo Arduino en: %s - %s (S/N: %s, VID/PID: %04X:%04X)",
+                        "Arduino detectado: %s - %s (S/N: %s, VID/PID: %04X:%04X, chip: %s)",
                         port_data["device"],
                         port_data["description"],
-                        port_data["serial_number"],
+                        port_data["serial_number"] or "N/A",
                         port_data["vid"] or 0,
                         port_data["pid"] or 0,
+                        self._guess_chip_name(port_data["vid"]),
                     )
                     if self._on_new_board:
                         self._on_new_board(port_data)
@@ -74,3 +91,52 @@ class USBScanner(threading.Thread):
 
     def stop(self):
         self._running = False
+
+    @staticmethod
+    def _is_likely_arduino(port) -> bool:
+        """
+        Determina si un puerto serial es probablemente un Arduino.
+        Usa múltiples heurísticas para no depender solo de serial_number.
+        """
+        # 1. Nombre de dispositivo típico en Linux
+        device_name = port.device.lower()
+        if "ttyusb" in device_name or "ttyacm" in device_name:
+            # Es un puerto serial USB, verificar si el chip es conocido
+            if port.vid is not None and port.vid in KNOWN_ARDUINO_VIDS:
+                return True
+            
+            # Si no tenemos VID, confiar en la descripción
+            desc = (port.description or "").lower()
+            arduino_keywords = [
+                "arduino", "ch340", "ch341", "ft232", "cp210", 
+                "usb-serial", "usb serial", "serial"
+            ]
+            if any(kw in desc for kw in arduino_keywords):
+                return True
+        
+        # 2. macOS: /dev/cu.usbserial* o /dev/cu.usbmodem*
+        if "usbserial" in device_name or "usbmodem" in device_name:
+            return True
+        
+        # 3. Windows: COMx con VID conocido
+        if port.vid is not None and port.vid in KNOWN_ARDUINO_VIDS:
+            return True
+        
+        return False
+
+    @staticmethod
+    def _guess_chip_name(vid: int | None) -> str:
+        """Retorna nombre legible del chip basado en VID."""
+        if vid is None:
+            return "Desconocido"
+        names = {
+            0x0403: "FTDI",
+            0x1A86: "WCH CH340/CH341",
+            0x10C4: "Silicon Labs CP210x",
+            0x2341: "Arduino",
+            0x2A03: "Arduino (Genuino)",
+            0x239A: "Adafruit",
+            0x0483: "STMicroelectronics",
+            0x16C0: "Teensy",
+        }
+        return names.get(vid, f"VID:{vid:04X}")

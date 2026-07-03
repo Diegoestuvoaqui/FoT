@@ -4,6 +4,7 @@ from tkinter.messagebox import askyesno
 
 import customtkinter as ctk
 
+from ui.dialogs.confirm_dialog import ConfirmDialog
 from ui.theme import FONT_TITLE, FONT_NORMAL, FONT_SMALL, COLORS
 
 logger = logging.getLogger(__name__)
@@ -198,16 +199,17 @@ class AdminPanel(ctk.CTkFrame):
             self._on_reset_password_callback(user_id, username)
 
     def _on_delete_user(self, user_id: int, username: str):
-        confirm = askyesno(
-            "Confirmar eliminación",
-            f"¿Eliminar permanentemente al usuario '{username}'?\n\n"
-            "Esta acción no se puede deshacer."
-        )
-        if not confirm:
-            return
-        if hasattr(self, "_on_delete_user_callback"):
-            self._on_delete_user_callback(user_id)
+        def _handle_result(confirmed: bool):
+            if confirmed and hasattr(self, "_on_delete_user_callback"):
+                self._on_delete_user_callback(user_id)
 
+        ConfirmDialog(
+            self.winfo_toplevel(),
+            title="Confirmar eliminación",
+            message=f"¿Eliminar permanentemente al usuario '{username}'?\n\n"
+                    "Esta acción no se puede deshacer.",
+            on_result=_handle_result,
+        )
     # ------------------------------------------------------------------
     # Registro de callbacks desde MainWindow
     # ------------------------------------------------------------------

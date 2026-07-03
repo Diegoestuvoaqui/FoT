@@ -313,7 +313,7 @@ class Database:
             params.append(start.strftime("%Y-%m-%d"))
         if end:
             query += " AND ts_base <= ?"
-            params.append(end.strftime("%Y-%m-%d"))
+            params.append(end.strftime("%Y-%m-%d 23:59:59"))
 
         query += " ORDER BY ts_base DESC, id DESC LIMIT ?"
         params.append(limit)
@@ -373,7 +373,7 @@ class Database:
             params.append(start.strftime("%Y-%m-%d"))
         if end:
             conditions.append("ts <= ?")
-            params.append(end.strftime("%Y-%m-%d"))
+            params.append(end.strftime("%Y-%m-%d 23:59:59"))
 
         if conditions:
             query += " WHERE " + " AND ".join(conditions)

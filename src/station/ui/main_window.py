@@ -231,9 +231,8 @@ class MainWindow:
     def _on_select_board(self, board_id: str | None):
         self._selected_board_id = board_id
         if board_id:
-            readings = self._board_ctrl._service._db.get_readings(board_id, limit=100)
+            readings = self._board_ctrl.get_readings(board_id, limit=100)
             self.dht11_panel.show_history(board_id, readings)
-
 
     # --- Callbacks Arduino Panel ---
     def _on_register_board(self, board_id: str):
@@ -338,7 +337,6 @@ class MainWindow:
             )
             self._status_bar.update_alerts(1)
 
-
     def _on_bell_clicked(self):
         """Abrir/ocultar panel de notificaciones."""
         if self._notif_panel_visible:
@@ -407,7 +405,7 @@ class MainWindow:
         if conn_type == "bluetooth":
             board = self._board_ctrl.register_bluetooth_board(board_id, address)
         elif conn_type == "wifi":
-            board = self._board_ctrl.register_board(board_id, address, "wifi")
+            board = self._board_ctrl.register_wifi_board(board_id, address)
         else:
             return
 
@@ -505,7 +503,10 @@ class MainWindow:
         """Cierra la sesión actual y vuelve a la pantalla de login."""
         logger.info("Cerrando sesión de usuario: %s", self._user.username if self._user else "unknown")
 
-        # Notificar logout
+        if self._notif_mgr:
+            self._notif_mgr.reset()
+
+        # Notificar logout (antes de cleanup para que el toast se muestre)
         self._notif_mgr.notify(
             "Sesión cerrada",
             f"Hasta luego, {self._user.username if self._user else 'usuario'}",
@@ -515,12 +516,8 @@ class MainWindow:
         # Limpiar callbacks del sensor manager
         self._sensor_manager.set_callbacks(on_reading=None, on_identify=None)
 
-        # Llamar a cleanup para detener timers y liberar recursos
+        # Cleanup centralizado (incluye _event_ctrl, _board_ctrl, timers, etc.)
         self.cleanup()
-
-        # Limpiar UI
-        self._event_ctrl.cleanup()
-        self._board_ctrl.cleanup()
 
         # Ocultar panel de notificaciones si está visible
         if self._notif_panel_visible:

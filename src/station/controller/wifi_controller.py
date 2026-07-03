@@ -27,3 +27,7 @@ class WiFiController:
 
     def is_scanning(self) -> bool:
         return self._service.is_scanning()
+
+    def cancel(self) -> None:
+        """Cancela el escaneo WiFi en curso."""
+        self._service.cancel()

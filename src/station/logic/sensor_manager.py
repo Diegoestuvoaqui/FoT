@@ -46,72 +46,64 @@ class SensorManager:
     # Conexiones
     # ------------------------------------------------------------------
 
-    def connect_usb(self, port: str, parcela_id: str) -> bool:
-        if parcela_id in self._bridges:
-            logger.warning("%s ya conectada", parcela_id)
+    def connect_usb(self, port: str, board_id: str) -> bool:
+        if board_id in self._bridges:
+            logger.warning("%s ya conectada", board_id)
             return False
 
         def on_read(data: dict):
             if self._on_reading:
-                self._on_reading(parcela_id, data)
+                self._on_reading(board_id, data)
 
         def on_resp(data: dict):
             if "sketch" in data and self._on_identify:
-                self._on_identify(parcela_id, data)
+                self._on_identify(board_id, data)
 
         bridge = SerialBridge(port=port, on_reading=on_read, on_command_response=on_resp)
         if bridge.connect():
-            self._bridges[parcela_id] = bridge
+            self._bridges[board_id] = bridge
             bridge.request_identify()
             return True
         return False
 
-    def connect_bluetooth(self, port: str, parcela_id: str) -> bool:
-        if parcela_id in self._bridges:
+    def connect_bluetooth(self, port: str, board_id: str) -> bool:
+        if board_id in self._bridges:
             return False
 
         def on_read(data: dict):
             if self._on_reading:
-                self._on_reading(parcela_id, data)
+                self._on_reading(board_id, data)
 
         bridge = BluetoothBridge(port=port, on_reading=on_read)
         if bridge.connect():
-            self._bridges[parcela_id] = bridge
+            self._bridges[board_id] = bridge
             bridge.request_identify()
             return True
         return False
 
-    def connect_wifi(self, parcela_id: str, broker_ip: str = "localhost", broker_port: int = 1883) -> bool:
+    def connect_wifi(self, board_id: str, broker_ip: str = "localhost", broker_port: int = 1883) -> bool:
         """
         Conecta una placa por WiFi (UNO R4).
-        Crea un WiFiBridge que se registra en el MQTTEventBus para recibir
-        datos y publicar comandos.
+        Crea un WiFiBridge que SOLO publica comandos.
+        Los datos entrantes son manejados por MQTTDataDispatcher global.
         """
-        if parcela_id in self._bridges:
-            logger.warning("%s ya conectada por WiFi", parcela_id)
+        if board_id in self._bridges:
+            logger.warning("%s ya conectada por WiFi", board_id)
             return False
 
         if self._mqtt_bus is None:
             logger.error("No hay MQTTEventBus configurado para WiFi")
             return False
 
-        def on_read(data: dict):
-            if self._on_reading:
-                self._on_reading(parcela_id, data)
-
-        def on_resp(data: dict):
-            if "sketch" in data and self._on_identify:
-                self._on_identify(parcela_id, data)
-
+        # WiFiBridge ya no necesita callbacks de lectura — el dispatcher global los maneja
         bridge = WiFiBridge(
-            board_id=parcela_id,
+            board_id=board_id,
             mqtt_bus=self._mqtt_bus,
-            on_reading=on_read,
-            on_command_response=on_resp,
+            # on_command_response opcional si queremos manejar respuestas a comandos
         )
         if bridge.connect():
-            self._bridges[parcela_id] = bridge
-            logger.info("Parcela %s conectada por WiFi (broker: %s:%d)", parcela_id, broker_ip, broker_port)
+            self._bridges[board_id] = bridge
+            logger.info("Placa %s lista para comandos WiFi (broker: %s:%d)", board_id, broker_ip, broker_port)
             return True
         return False
 
@@ -119,41 +111,45 @@ class SensorManager:
     # Desconexión
     # ------------------------------------------------------------------
 
-    def disconnect(self, parcela_id: str) -> None:
-        bridge = self._bridges.pop(parcela_id, None)
+    def disconnect(self, board_id: str) -> None:
+        bridge = self._bridges.pop(board_id, None)
         if bridge:
             bridge.disconnect()
-            logger.info("%s desconectada", parcela_id)
+            logger.info("%s desconectada", board_id)
 
     def disconnect_all(self) -> None:
-        for parcela_id in list(self._bridges.keys()):
-            self.disconnect(parcela_id)
+        for board_id in list(self._bridges.keys()):
+            self.disconnect(board_id)
 
     # ------------------------------------------------------------------
     # Comandos
     # ------------------------------------------------------------------
 
-    def send_command(self, parcela_id: str, cmd: dict) -> bool:
-        bridge = self._bridges.get(parcela_id)
+    def send_command(self, board_id: str, cmd: dict) -> bool:
+        bridge = self._bridges.get(board_id)
         if not bridge:
             return False
         bridge.send_command(cmd)
         return True
 
-    def request_read(self, parcela_id: str) -> bool:
-        return self.send_command(parcela_id, {"cmd": "read"})
+    def request_read(self, board_id: str) -> bool:
+        return self.send_command(board_id, {"cmd": "read"})
 
-    def set_interval(self, parcela_id: str, ms: int) -> bool:
-        return self.send_command(parcela_id, {"cmd": "interval", "ms": ms})
+    def set_interval(self, board_id: str, ms: int) -> bool:
+        return self.send_command(board_id, {"cmd": "interval", "ms": ms})
 
     # ------------------------------------------------------------------
     # Consultas
     # ------------------------------------------------------------------
 
     def get_connected(self) -> list[str]:
-        """Retorna IDs de parcelas conectadas por USB/Bluetooth/WiFi."""
+        """Retorna IDs de placas conectadas por USB/Bluetooth/WiFi."""
         return list(self._bridges.keys())
 
-    def is_connected(self, parcela_id: str) -> bool:
-        bridge = self._bridges.get(parcela_id)
+    def is_connected(self, board_id: str) -> bool:
+        bridge = self._bridges.get(board_id)
         return bridge is not None and bridge.is_connected()
+
+    def get_bridge(self, board_id: str) -> SerialBridge | WiFiBridge | None:
+        """Obtiene el bridge de una placa para operaciones avanzadas."""
+        return self._bridges.get(board_id)

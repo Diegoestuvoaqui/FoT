@@ -19,6 +19,7 @@ from controller.event_controller import EventController
 from data.database import Database
 from domain.user import User
 from logic.data_receiver import DataReceiver
+from logic.mqtt_data_dispatcher import MQTTDataDispatcher
 from logic.sensor_manager import SensorManager
 from service.auth_service import AuthService
 from service.board_service import BoardService
@@ -98,14 +99,30 @@ def _build_main(root: ctk.CTk,
     )
     board_service.load_from_db()
 
+    # ------------------------------------------------------------------
+    # Dispatcher MQTT global para todas las placas WiFi
+    # ------------------------------------------------------------------
+    def on_new_wifi_board(board_id: str, conn_type: str) -> None:
+        """Auto-registra una placa WiFi detectada vía MQTT si no existe."""
+        existing = board_service.get_board(board_id)
+        if existing is None:
+            board_service.register_wifi_board(board_id, "localhost")
+            logger.info("Placa WiFi auto-registrada desde MQTT: %s", board_id)
 
+    mqtt_dispatcher = MQTTDataDispatcher(
+        sensor_manager=sensor_manager,  # ← para marcar bridges como vistos
+        on_reading=on_sensor_reading,
+        on_identify=on_sensor_identify,
+        on_new_board=on_new_wifi_board,
+    )
+    mqtt_bus.register(mqtt_dispatcher, topic_filter="fot/+/sensores")
+    mqtt_bus.register(mqtt_dispatcher, topic_filter="fot/+/estado")
 
     # ------------------------------------------------------------------
     # Capa de Controladores
     # ------------------------------------------------------------------
     event_controller = EventController(event_service)
     board_controller = BoardController(board_service)
-
 
     # ------------------------------------------------------------------
     # Vista principal
@@ -122,17 +139,12 @@ def _build_main(root: ctk.CTk,
     )
 
     # ------------------------------------------------------------------
-    # Registro de observadores MQTT (para placas WiFi)
-    # ------------------------------------------------------------------
-    #mqtt_bus.register(data_receiver)
-
-    # ------------------------------------------------------------------
     # Cierre limpio
     # ------------------------------------------------------------------
     def on_close() -> None:
         logger.info("Cerrando FoT Estación Base")
         sensor_manager.disconnect_all()
-        #mqtt_bus.unregister(data_receiver)
+        mqtt_bus.unregister(mqtt_dispatcher)
         mqtt_bus.stop()
         event_controller.cleanup()
         board_controller.cleanup()
@@ -164,8 +176,6 @@ def main() -> None:
     auth_service = AuthService(db)
     auth_service.ensure_admin_exists()
 
-
-    #el SUBJECT de los WiFiBridge
     mqtt_bus = MQTTEventBus("localhost", 1883)
     try:
         mqtt_bus.start()
@@ -205,7 +215,7 @@ def main() -> None:
         # Reconfigurar la misma ventana para la app principal
         root.title("FoT — Estación Base")
         root.resizable(True, True)
-        root.minsize(960, 640)
+        root.minsize(960, 960)
         root.geometry("960x960")
 
         # Resetear configuraciones de grid del login

@@ -8,11 +8,14 @@ class Role(Enum):
 
 
 class User:
-    def __init__(self, id: int, username: str, role: str, is_active: bool = True):
+    def __init__(self, id: int, username: str, role: str,
+                 is_active: bool = True,
+                 must_change_password: bool = False):
         self.id = id
         self.username = username
         self._role = role
         self.is_active = is_active
+        self.must_change_password = must_change_password
 
     @property
     def role(self) -> str:
@@ -25,7 +28,9 @@ class User:
         return self._role == Role.USER.value
 
     def __repr__(self) -> str:
-        return f"User(id={self.id}, username={self.username!r}, role={self.role!r}, active={self.is_active})"
+        return (f"User(id={self.id}, username={self.username!r}, "
+                f"role={self.role!r}, active={self.is_active}, "
+                f"must_change_password={self.must_change_password})")
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, User):

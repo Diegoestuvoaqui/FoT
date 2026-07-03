@@ -18,6 +18,7 @@ class BoardService:
         self._sensor_mgr = sensor_manager
         self._on_board_changed = on_board_changed
         self._boards: dict[str, Board] = {}
+        self._observers: list[Callable[[Board], None]] = []
 
     # ------------------------------------------------------------------
     # Registro
@@ -35,6 +36,8 @@ class BoardService:
             board.port = port
             board.conn = conn_type
             board.status = "Detectada"
+            if usuario_id is not None:
+                board.usuario_id = usuario_id
             if factory_data:
                 board.hwid = factory_data.get("hwid")
                 board.vid = factory_data.get("vid")
@@ -139,6 +142,11 @@ class BoardService:
     def request_read(self, board_id: str) -> bool:
         return self._sensor_mgr.request_read(board_id)
 
+    def get_readings(self, board_id: str, sensor_type: str | None = None,
+                     limit: int = 100, start=None, end=None) -> list[dict]:
+        return self._db.get_readings(board_id, sensor_type, limit, start, end)
+
+
     def set_interval(self, board_id: str, ms: int) -> bool:
         return self._sensor_mgr.set_interval(board_id, ms)
 
@@ -207,22 +215,27 @@ class BoardService:
             self._boards[board.id] = board
 
     # ------------------------------------------------------------------
-    # Observadores
+    # Observadores (lista, como EventService)
     # ------------------------------------------------------------------
 
     def add_observer(self, callback: Callable[[Board], None]) -> None:
-        self._on_board_changed = callback
+        if callback not in self._observers:
+            self._observers.append(callback)
 
-    def remove_observer(self) -> None:
-        self._on_board_changed = None
+    def remove_observer(self, callback: Callable[[Board], None]) -> None:
+        if callback in self._observers:
+            self._observers.remove(callback)
 
     def _notify_change(self, board: Board) -> None:
-        if self._on_board_changed:
+        for observer in self._observers:
             try:
-                self._on_board_changed(board)
+                observer(board)
             except Exception as e:
                 logger.error("Error en observer: %s", e)
 
     def stop(self) -> None:
         self._sensor_mgr.disconnect_all()
         self._boards.clear()
+        self._observers.clear()
+
+

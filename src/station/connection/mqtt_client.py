@@ -1,5 +1,5 @@
-#src/station.mqtt_client.py
 import json
+import fnmatch
 import logging
 
 import paho.mqtt.client as mqtt
@@ -8,25 +8,51 @@ logger = logging.getLogger(__name__)
 
 
 class MQTTEventBus:
+    """
+    Broker MQTT con routing por topic pattern.
+    Los observers se registran con un filtro de topic (wildcard soportado).
+    """
+
     def __init__(self, broker_ip: str, broker_port: int = 1883):
         self._broker_ip = broker_ip
         self._broker_port = broker_port
-        self._observers: list = []
+        self._observers: list[tuple[object, str]] = []  # (observer, topic_filter)
         self._client: mqtt.Client | None = None
 
-    def register(self, observer) -> None:
-        if observer not in self._observers:
-            self._observers.append(observer)
+    def register(self, observer, topic_filter: str = "#") -> None:
+        """
+        Registra un observer para un pattern de topic.
+        Wildcards MQTT: + (un nivel), # (múltiples niveles)
+        Ejemplos:
+            "fot/+/sensores"     → todas las lecturas
+            "fot/board-01/#"     → todo de board-01
+            "#"                   → todo (default)
+        """
+        if not hasattr(observer, 'on_event'):
+            raise ValueError("Observer debe tener método on_event(topic, data)")
+        self._observers.append((observer, topic_filter))
+        logger.debug("Observer registrado para %s: %s", topic_filter, type(observer).__name__)
 
     def unregister(self, observer) -> None:
-        self._observers = [o for o in self._observers if o is not observer]
+        self._observers = [(o, f) for o, f in self._observers if o is not observer]
 
     def _notify(self, topic: str, data: dict) -> None:
-        for observer in self._observers:
-            try:
-                observer.on_event(topic, data)
-            except Exception as e:
-                logger.error("Error en observer %s: %s", type(observer).__name__, e)
+        for observer, topic_filter in self._observers:
+            if self._topic_matches(topic_filter, topic):
+                try:
+                    observer.on_event(topic, data)
+                except Exception as e:
+                    logger.error("Error en observer %s: %s", type(observer).__name__, e)
+
+    @staticmethod
+    def _topic_matches(pattern: str, topic: str) -> bool:
+        """
+        Convierte pattern MQTT a regex de fnmatch.
+        + → un solo nivel cualquiera
+        # → múltiples niveles (solo al final)
+        """
+        pattern_glob = pattern.replace("+", "*").replace("#", "*")
+        return fnmatch.fnmatch(topic, pattern_glob)
 
     def start(self) -> None:
         self._client = mqtt.Client()
@@ -42,7 +68,6 @@ class MQTTEventBus:
             self._client.disconnect()
             self._client = None
 
-    # Firma exacta que espera paho — prefijo _ en los no usados
     def _on_connect(self, client: mqtt.Client, _userdata: object,
                     _flags: dict, rc: int) -> None:
         if rc == 0:

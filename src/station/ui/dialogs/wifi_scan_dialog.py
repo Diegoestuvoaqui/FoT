@@ -27,6 +27,9 @@ class WiFiScanDialog(ctk.CTkToplevel):
 
         self._start_scan()
 
+        # ← NUEVO: cancelar escaneo si se cierra el diálogo
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+
     def _set_grab(self):
         try:
             self.grab_set()
@@ -64,10 +67,18 @@ class WiFiScanDialog(ctk.CTkToplevel):
             command=self._start_scan,
         ).pack(side="left", padx=4)
 
+        # ← NUEVO: botón cancelar durante escaneo
+        self._btn_cancel = ctk.CTkButton(
+            btn_frame, text="Cancelar",
+            font=FONT_SMALL, fg_color="#EF4444", hover_color="#B91C1C",
+            command=self._on_close,
+        )
+        self._btn_cancel.pack(side="left", padx=4)
+
         ctk.CTkButton(
             btn_frame, text="Cerrar",
             font=FONT_SMALL, fg_color="gray",
-            command=self.destroy,
+            command=self._on_close,
         ).pack(side="right", padx=4)
 
     def _start_scan(self):
@@ -119,14 +130,19 @@ class WiFiScanDialog(ctk.CTkToplevel):
 
     def _add_device_row(self, index: int, device: dict):
         row = ctk.CTkFrame(self._list_frame, corner_radius=6,
-                          border_width=1, border_color=COLORS["border"])
+                           border_width=1, border_color=COLORS["border"])
         row.grid(row=index, column=0, sticky="ew", pady=2, padx=2)
         row.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(row, text=f"📶 {device['name']}", font=FONT_NORMAL, anchor="w").grid(
             row=0, column=0, padx=10, pady=(6, 0), sticky="w")
-        ctk.CTkLabel(row, text=f"{device['ip']}:{device['port']} • {device['type']}", font=FONT_SMALL,
-                    text_color="gray", anchor="w").grid(
+
+        info = f"{device['ip']}:{device['port']} • {device['type']}"
+        if device.get('response_ms'):
+            info += f" • {device['response_ms']}ms"
+
+        ctk.CTkLabel(row, text=info, font=FONT_SMALL,
+                     text_color="gray", anchor="w").grid(
             row=1, column=0, padx=10, pady=(0, 6), sticky="w")
 
         ctk.CTkButton(
@@ -137,4 +153,10 @@ class WiFiScanDialog(ctk.CTkToplevel):
     def _register_device(self, device: dict):
         if self._on_register:
             self._on_register(device["id"], device["ip"], "wifi")
+        self._on_close()
+
+    def _on_close(self):
+        """Cierra el diálogo cancelando el escaneo si está activo."""
+        if self._controller.is_scanning():
+            self._controller.cancel()
         self.destroy()

@@ -12,8 +12,8 @@ import logging
 from typing import Optional
 
 import customtkinter as ctk
-from tkinter import messagebox
 
+from ui.dialogs.confirm_dialog import ConfirmDialog  # ← NUEVO: diálogo custom
 from ui.theme import FONT_TITLE, FONT_NORMAL, FONT_SMALL, COLORS
 
 logger = logging.getLogger(__name__)
@@ -72,7 +72,6 @@ class SettingsPanel(ctk.CTkFrame):
             row=row, column=0, sticky="w", pady=(16, 8))
         row += 1
 
-        # Info del usuario actual
         if self._user:
             user_info = f"Usuario: {self._user.username}  |  Rol: {self._user.role.upper()}"
             ctk.CTkLabel(content, text=user_info, font=FONT_NORMAL,
@@ -88,34 +87,29 @@ class SettingsPanel(ctk.CTkFrame):
         ctk.CTkLabel(pass_frame, text="Cambiar contraseña", font=("Roboto", 12, "bold")).grid(
             row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
 
-        # Contraseña actual
         ctk.CTkLabel(pass_frame, text="Actual:", font=FONT_SMALL).grid(
             row=1, column=0, sticky="w", padx=(0, 8), pady=2)
         self._entry_old_pass = ctk.CTkEntry(
             pass_frame, font=FONT_NORMAL, show="●", placeholder_text="Contraseña actual")
         self._entry_old_pass.grid(row=1, column=1, sticky="ew", pady=2)
 
-        # Nueva contraseña
         ctk.CTkLabel(pass_frame, text="Nueva:", font=FONT_SMALL).grid(
             row=2, column=0, sticky="w", padx=(0, 8), pady=2)
         self._entry_new_pass = ctk.CTkEntry(
             pass_frame, font=FONT_NORMAL, show="●", placeholder_text="Mínimo 4 caracteres")
         self._entry_new_pass.grid(row=2, column=1, sticky="ew", pady=2)
 
-        # Confirmar nueva
         ctk.CTkLabel(pass_frame, text="Confirmar:", font=FONT_SMALL).grid(
             row=3, column=0, sticky="w", padx=(0, 8), pady=2)
         self._entry_confirm_pass = ctk.CTkEntry(
             pass_frame, font=FONT_NORMAL, show="●", placeholder_text="Repite la nueva")
         self._entry_confirm_pass.grid(row=3, column=1, sticky="ew", pady=2)
 
-        # Mostrar contraseñas
         self._show_pass = ctk.CTkCheckBox(
             pass_frame, text="Mostrar contraseñas", font=FONT_SMALL,
             command=self._toggle_password_visibility)
         self._show_pass.grid(row=4, column=1, sticky="w", pady=(4, 8))
 
-        # Botón cambiar
         self._lbl_pass_error = ctk.CTkLabel(
             pass_frame, text="", font=FONT_SMALL, text_color=COLORS["fault"])
         self._lbl_pass_error.grid(row=5, column=0, columnspan=2, sticky="w", pady=(0, 4))
@@ -130,12 +124,10 @@ class SettingsPanel(ctk.CTkFrame):
 
         row += 1
 
-        # Separador
         ctk.CTkFrame(content, height=1, fg_color=COLORS["border"]).grid(
             row=row, column=0, sticky="ew", pady=12)
         row += 1
 
-        # --- Botón Cerrar Sesión ---
         ctk.CTkButton(
             content,
             text="🚪  Cerrar sesión",
@@ -147,7 +139,6 @@ class SettingsPanel(ctk.CTkFrame):
         ).grid(row=row, column=0, sticky="ew", pady=(8, 16))
         row += 1
 
-        # Separador
         ctk.CTkFrame(content, height=1, fg_color=COLORS["border"]).grid(
             row=row, column=0, sticky="ew", pady=12)
         row += 1
@@ -160,7 +151,6 @@ class SettingsPanel(ctk.CTkFrame):
             row=row, column=0, sticky="w", pady=(8, 8))
         row += 1
 
-        # Pantalla completa
         self._btn_fullscreen = ctk.CTkButton(
             content,
             text="🖥️  Pantalla completa",
@@ -171,7 +161,6 @@ class SettingsPanel(ctk.CTkFrame):
         self._btn_fullscreen.grid(row=row, column=0, sticky="ew", pady=4)
         row += 1
 
-        # Tema
         theme_frame = ctk.CTkFrame(content, fg_color="transparent")
         theme_frame.grid(row=row, column=0, sticky="ew", pady=8)
         theme_frame.grid_columnconfigure(1, weight=1)
@@ -191,7 +180,6 @@ class SettingsPanel(ctk.CTkFrame):
         self._theme_combo.grid(row=0, column=1, sticky="ew")
         row += 1
 
-        # Separador
         ctk.CTkFrame(content, height=1, fg_color=COLORS["border"]).grid(
             row=row, column=0, sticky="ew", pady=12)
         row += 1
@@ -205,7 +193,6 @@ class SettingsPanel(ctk.CTkFrame):
         row += 1
 
         if self._notif_mgr:
-            # Sonido habilitado
             self._sound_switch = ctk.CTkSwitch(
                 content,
                 text="Sonido de notificaciones",
@@ -217,7 +204,6 @@ class SettingsPanel(ctk.CTkFrame):
                 self._sound_switch.select()
             row += 1
 
-            # Volumen
             vol_frame = ctk.CTkFrame(content, fg_color="transparent")
             vol_frame.grid(row=row, column=0, sticky="ew", pady=6)
             vol_frame.grid_columnconfigure(1, weight=1)
@@ -244,7 +230,6 @@ class SettingsPanel(ctk.CTkFrame):
             self._lbl_volume.grid(row=0, column=2, padx=(8, 0))
             row += 1
 
-            # Toast habilitado
             self._toast_switch = ctk.CTkSwitch(
                 content,
                 text="Mostrar notificaciones emergentes (toast)",
@@ -256,7 +241,6 @@ class SettingsPanel(ctk.CTkFrame):
                 self._toast_switch.select()
             row += 1
 
-            # Botón probar sonido
             ctk.CTkButton(
                 content,
                 text="🔊  Probar sonido",
@@ -273,7 +257,6 @@ class SettingsPanel(ctk.CTkFrame):
                 row=row, column=0, sticky="w", pady=8)
             row += 1
 
-        # Separador
         ctk.CTkFrame(content, height=1, fg_color=COLORS["border"]).grid(
             row=row, column=0, sticky="ew", pady=12)
         row += 1
@@ -297,10 +280,21 @@ class SettingsPanel(ctk.CTkFrame):
         ).grid(row=row, column=0, sticky="ew", pady=4)
         row += 1
 
-        # Info de versión
         ctk.CTkLabel(content, text="Farm of Things v1.0",
                      font=FONT_SMALL, text_color="gray").grid(
             row=row, column=0, pady=(24, 8))
+
+    # ------------------------------------------------------------------
+    # Validaciones
+    # ------------------------------------------------------------------
+    def _validate_password(self, password: str) -> tuple[bool, str]:
+        if not password:
+            return False, "La contraseña es obligatoria"
+        if " " in password:
+            return False, "La contraseña no puede contener espacios"
+        if len(password) < 4:
+            return False, "La contraseña debe tener al menos 4 caracteres"
+        return True, ""
 
     # ------------------------------------------------------------------
     # Callbacks de Cuenta
@@ -321,8 +315,9 @@ class SettingsPanel(ctk.CTkFrame):
             self._lbl_pass_error.configure(text="Todos los campos son obligatorios")
             return
 
-        if len(new) < 4:
-            self._lbl_pass_error.configure(text="La nueva contraseña debe tener al menos 4 caracteres")
+        ok, msg = self._validate_password(new)
+        if not ok:
+            self._lbl_pass_error.configure(text=msg)
             return
 
         if new != confirm:
@@ -346,12 +341,17 @@ class SettingsPanel(ctk.CTkFrame):
             self._lbl_pass_error.configure(text=msg, text_color=COLORS["fault"])
 
     def _on_logout_clicked(self):
-        confirm = messagebox.askyesno(
-            "Cerrar sesión",
-            f"¿Estás seguro de que querés cerrar la sesión de {self._user.username if self._user else 'usuario'}?"
+        # ← CORREGIDO: usar ConfirmDialog custom en vez de messagebox nativo
+        def _handle_result(confirmed: bool):
+            if confirmed and self._on_logout:
+                self._on_logout()
+
+        ConfirmDialog(
+            self.winfo_toplevel(),
+            title="Cerrar sesión",
+            message=f"¿Estás seguro de que querés cerrar la sesión de {self._user.username if self._user else 'usuario'}?",
+            on_result=_handle_result,
         )
-        if confirm and self._on_logout:
-            self._on_logout()
 
     # ------------------------------------------------------------------
     # Callbacks de Interfaz

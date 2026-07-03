@@ -13,6 +13,9 @@ Uso:
     # Configuración
     mgr.set_sound_enabled(True)
     mgr.set_volume(0.7)
+
+    # Al destruir la ventana (logout):
+    mgr.reset()  # Limpia toasts activos y referencias al root viejo
 """
 from __future__ import annotations
 
@@ -43,10 +46,10 @@ class NotifType(Enum):
 
 
 NOTIF_COLORS = {
-    NotifType.INFO: ("#3B82F6", "#1E3A5F"),      # azul
-    NotifType.SUCCESS: ("#22C55E", "#14532D"),   # verde
-    NotifType.WARNING: ("#F59E0B", "#78350F"), # ámbar
-    NotifType.ERROR: ("#EF4444", "#7F1D1D"),    # rojo
+    NotifType.INFO: ("#3B82F6", "#1E3A5F"),  # azul
+    NotifType.SUCCESS: ("#22C55E", "#14532D"),  # verde
+    NotifType.WARNING: ("#F59E0B", "#78350F"),  # ámbar
+    NotifType.ERROR: ("#EF4444", "#7F1D1D"),  # rojo
 }
 
 NOTIF_ICONS = {
@@ -84,6 +87,10 @@ class NotificationManager:
 
     def __init__(self, root: Optional[ctk.CTk] = None):
         if hasattr(self, "_initialized"):
+            # Si ya está inicializado pero el root cambió (logout/login), actualizar root
+            if root is not None and root != self._root:
+                self._cleanup_toasts()
+                self._root = root
             return
         self._initialized = True
 
@@ -98,6 +105,40 @@ class NotificationManager:
 
         # Intentar cargar configuración guardada
         self._load_settings()
+
+    # ------------------------------------------------------------------
+    # Reset / Cleanup
+    # ------------------------------------------------------------------
+
+    def reset(self) -> None:
+        """
+        Limpia todos los toasts activos y referencias al root.
+        Llamar al hacer logout antes de destruir la ventana.
+        """
+        self._cleanup_toasts()
+        self._root = None
+        logger.info("NotificationManager reseteado")
+
+    def _cleanup_toasts(self) -> None:
+        """Destruye todos los toasts activos y limpia la lista."""
+        for toast in self._active_toasts:
+            try:
+                if toast.winfo_exists():
+                    toast.destroy()
+            except Exception:
+                pass
+        self._active_toasts.clear()
+
+    def _purge_dead_toasts(self) -> None:
+        """Elimina de la lista los toasts que ya fueron destruidos."""
+        alive = []
+        for toast in self._active_toasts:
+            try:
+                if toast.winfo_exists():
+                    alive.append(toast)
+            except Exception:
+                pass
+        self._active_toasts = alive
 
     # ------------------------------------------------------------------
     # Configuración
@@ -150,7 +191,7 @@ class NotificationManager:
             threading.Thread(target=self._play_sound, args=(notif_type,), daemon=True).start()
 
         # Toast
-        if self._toast_enabled and self._root:
+        if self._toast_enabled and self._root and self._root.winfo_exists():
             self._root.after(0, lambda: self._show_toast(notif))
 
         # Notificar observers (badge count, etc.)
@@ -225,7 +266,7 @@ class NotificationManager:
                 self._play_linux_sound(freq, duration)
             elif system == "Darwin":  # macOS
                 subprocess.run(["afplay", "/System/Library/Sounds/Glass.aiff"],
-                             capture_output=True, timeout=2)
+                               capture_output=True, timeout=2)
         except Exception as e:
             logger.debug("No se pudo reproducir sonido: %s", e)
 
@@ -272,6 +313,9 @@ class NotificationManager:
         if not self._root or not self._root.winfo_exists():
             return
 
+        # Limpiar toasts muertos antes de crear uno nuevo
+        self._purge_dead_toasts()
+
         toast = ctk.CTkToplevel(self._root)
         toast.overrideredirect(True)
         toast.attributes("-topmost", True)
@@ -304,8 +348,8 @@ class NotificationManager:
         screen_w = self._root.winfo_screenwidth()
         screen_h = self._root.winfo_screenheight()
 
-        # Apilar toasts
-        offset_y = sum(t.winfo_height() + 10 for t in self._active_toasts)
+        # Apilar toasts (solo contar los que están vivos)
+        offset_y = sum(t.winfo_height() + 10 for t in self._active_toasts if t.winfo_exists())
         x = screen_w - width - 20
         y = screen_h - height - 40 - offset_y
         toast.geometry(f"{width}x{height}+{x}+{y}")
@@ -314,8 +358,11 @@ class NotificationManager:
 
         # Auto-cerrar después de 4 segundos
         def _close():
-            if toast.winfo_exists():
-                toast.destroy()
+            try:
+                if toast.winfo_exists():
+                    toast.destroy()
+            except Exception:
+                pass
             if toast in self._active_toasts:
                 self._active_toasts.remove(toast)
 
