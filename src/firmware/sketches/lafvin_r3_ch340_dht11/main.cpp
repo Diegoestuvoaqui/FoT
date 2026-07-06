@@ -1,0 +1,40 @@
+// src/firmware/sketches/lafvin_r3_ch340_dht11/main.cpp
+#include "LAFVIN_R3_CH340_DHT11_Sketch.h"
+#include "../../core/communication/SerialCommunication.h"
+#include "../../core/commands/CommandParser.h"
+#include "../../core/commands/CommandInvoker.h"
+
+#define SERIAL_BAUD 115200
+#define CMD_BUFFER_SIZE 128
+
+LAFVIN_R3_CH340_DHT11_Sketch sketch;
+SerialCommunication comm(SERIAL_BAUD);
+
+void setup() {
+    comm.begin();
+    sketch.setCommunication(&comm);
+    sketch.setup();
+}
+
+void loop() {
+    sketch.loop();
+
+    static char buffer[CMD_BUFFER_SIZE];
+    static uint8_t bufIndex = 0;
+
+    while (comm.available()) {
+        int c = comm.read();
+        if (c == '\n' || c == '\r') {
+            if (bufIndex > 0) {
+                buffer[bufIndex] = '\0';
+                ICommand* cmd = CommandParser::parse(buffer);
+                if (cmd) {
+                    CommandInvoker::executeImmediate(cmd, sketch);
+                }
+                bufIndex = 0;
+            }
+        } else if (bufIndex < CMD_BUFFER_SIZE - 1) {
+            buffer[bufIndex++] = (char)c;
+        }
+    }
+}

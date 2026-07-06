@@ -20,6 +20,8 @@ class ArduinoPanel(ctk.CTkFrame):
             on_scan_bluetooth=None,
             on_scan_wifi=None,
             on_firmware_update=None,
+            on_identify=None,
+            #on_register_manual=None,
             **kwargs
     ):
         super().__init__(master, **kwargs)
@@ -36,6 +38,8 @@ class ArduinoPanel(ctk.CTkFrame):
         self._on_scan_bluetooth = on_scan_bluetooth
         self._on_scan_wifi = on_scan_wifi
         self._on_firmware_update = on_firmware_update
+        #self._on_register_manual = on_register_manual  
+        self._on_identify = on_identify   # para saber que sketch tiene
 
         self._boards: list[Board] = []
         self._selected_board_id: str | None = None
@@ -62,17 +66,29 @@ class ArduinoPanel(ctk.CTkFrame):
         btn_frame = ctk.CTkFrame(left, fg_color="transparent")
         btn_frame.grid(row=2, column=0, pady=6, padx=6, sticky="ew")
 
-        ctk.CTkButton(
-            btn_frame, text="Buscar Bluetooth",
-            font=FONT_SMALL,
-            command=self._on_scan_bluetooth
-        ).pack(side="left", padx=4, fill="x", expand=True)
+        # ← NUEVO: Botón de registro manual
+        #ctk.CTkButton(
+        #    btn_frame, text="➕ Registrar",
+        #    font=FONT_SMALL,
+        #    fg_color=COLORS["accent"],
+        #    hover_color="#16A34A",
+        #    command=self._on_register_manual_clicked
+        #).pack(side="left", padx=4, fill="x", expand=True)
 
         ctk.CTkButton(
             btn_frame, text="Buscar WiFi",
             font=FONT_SMALL,
             command=self._on_scan_wifi
         ).pack(side="left", padx=4, fill="x", expand=True)
+
+
+        ctk.CTkButton(
+            btn_frame, text="Buscar Bluetooth",
+            font=FONT_SMALL,
+            command=self._on_scan_bluetooth
+        ).pack(side="left", padx=4, fill="x", expand=True)
+
+
 
     def _build_right(self):
         right = ctk.CTkFrame(self)
@@ -163,13 +179,6 @@ class ArduinoPanel(ctk.CTkFrame):
         btn_frame = ctk.CTkFrame(right, fg_color="transparent")
         btn_frame.grid(row=row, column=0, columnspan=2, pady=8)
 
-        self._btn_register = ctk.CTkButton(
-            btn_frame, text="Registrar Arduino",
-            font=FONT_SMALL,
-            command=self._on_register_clicked
-        )
-        self._btn_register.pack(side="left", padx=4)
-
         self._btn_connect = ctk.CTkButton(
             btn_frame, text="Conectar",
             font=FONT_SMALL,
@@ -189,7 +198,7 @@ class ArduinoPanel(ctk.CTkFrame):
             btn_frame, text="🔄 Identificar",
             font=FONT_SMALL,
             state="disabled",
-            command=self._on_read_clicked
+            command=self._on_identify_clicked
         )
         self._btn_read.pack(side="left", padx=4)
 
@@ -236,6 +245,14 @@ class ArduinoPanel(ctk.CTkFrame):
         # Actualizar detalle si es la seleccionada
         if self._selected_board_id == board.id:
             self._update_detail(board)
+
+    def remove_board(self, board_id: str):
+        """← NUEVO: Elimina una placa de la lista visual."""
+        self._boards = [b for b in self._boards if b.id != board_id]
+        self._board_list.set_boards(self._boards)
+        if self._selected_board_id == board_id:
+            self._selected_board_id = None
+            self._clear_detail()
 
     def update_reading(self, board_id: str, data: dict):
         # Las lecturas se muestran en DHT11Panel, aquí solo log de conexión
@@ -295,9 +312,6 @@ class ArduinoPanel(ctk.CTkFrame):
         is_connected = board.status == "Conectada"
         is_registered = board.sketch_id is not None
 
-        self._btn_register.configure(
-            state="disabled" if is_registered else "normal"
-        )
         self._btn_connect.configure(
             state="normal" if not is_connected else "disabled"
         )
@@ -308,9 +322,23 @@ class ArduinoPanel(ctk.CTkFrame):
             state="normal" if is_connected else "disabled"
         )
 
-    def _on_register_clicked(self):
-        if self._selected_board_id and self._on_register:
-            self._on_register(self._selected_board_id)
+    def _clear_detail(self):
+        """← NUEVO: Limpia el panel de detalle cuando no hay selección."""
+        self._lbl_title.configure(text="Selecciona una placa")
+        for lbl in self._info_labels.values():
+            lbl.configure(text="—")
+        for lbl in self._factory_labels.values():
+            lbl.configure(text="—")
+        self._port_label.configure(text="—")
+        self._lbl_last_seen.configure(text="Sin datos")
+        self._btn_connect.configure(state="disabled")
+        self._btn_disconnect.configure(state="disabled")
+        self._btn_read.configure(state="disabled")
+
+    #def _on_register_manual_clicked(self):
+    #    """← NUEVO: Abre diálogo de registro manual."""
+    #    if self._on_register_manual:
+    #        self._on_register_manual()
 
     def _on_connect_clicked(self):
         if self._selected_board_id and self._on_connect:
@@ -320,9 +348,9 @@ class ArduinoPanel(ctk.CTkFrame):
         if self._selected_board_id and self._on_disconnect:
             self._on_disconnect(self._selected_board_id)
 
-    def _on_read_clicked(self):
-        if self._selected_board_id and self._on_read_now:
-            self._on_read_now(self._selected_board_id)
+    def _on_identify_clicked(self):
+        if self._selected_board_id and self._on_identify:
+            self._on_identify(self._selected_board_id)
 
     def _on_firmware_clicked(self):
         if self._selected_board_id and self._on_firmware_update:

@@ -41,6 +41,9 @@ class SerialBridge:
             self._reader_thread = threading.Thread(target=self._read_loop, daemon=True)
             self._reader_thread.start()
             logger.info("Conectado a %s @ %d baud", self.port, self.baud)
+
+            time.sleep(3.0)
+
             return True
         except serial.SerialException as e:
             logger.error("No se pudo conectar a %s: %s", self.port, e)
@@ -125,6 +128,8 @@ class SerialBridge:
         """Clasifica el mensaje JSON recibido."""
         if "data" in data and "ts" in data:
             return "reading"
-        if "sketch" in data or "status" in data:
+        if "sketch" in data:
+            return "response"
+        if "status" in data:
             return "status"
         return "response"

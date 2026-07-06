@@ -1,4 +1,3 @@
-# ui/main_window.py
 import logging
 import tkinter as tk
 
@@ -23,6 +22,8 @@ from domain.boards import Board
 
 from ui.dialogs.bluetooth_scan_dialog import BluetoothScanDialog
 from ui.dialogs.wifi_scan_dialog import WiFiScanDialog
+from ui.dialogs.arduino_register_dialog import ArduinoRegisterDialog
+from ui.dialogs.confirm_dialog import ConfirmDialog
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,7 @@ class MainWindow:
         self._selected_board_id: str | None = None
         self._current_panel: ctk.CTkFrame | None = None
         self._notif_panel_visible = False
+        self._removing = False  # ← NUEVO: evita doble-click en eliminar
 
         # Sistema de notificaciones
         self._notif_mgr = NotificationManager(root)
@@ -115,9 +117,11 @@ class MainWindow:
             on_disconnect=self._on_disconnect_board,
             on_remove=self._on_remove_board,
             on_read_now=self._on_read_now,
+            on_identify=self._on_identify_board,  
             on_scan_bluetooth=self._on_scan_bluetooth,
             on_scan_wifi=self._on_scan_wifi,
             on_firmware_update=self._on_firmware_update,
+            #on_register_manual=self._on_register_manual,
         )
         self._panels["arduinos"] = self.arduino_panel
 
@@ -135,7 +139,7 @@ class MainWindow:
         self.admin_panel.set_reset_password_callback(self._on_admin_reset_password)
         self._panels["admin"] = self.admin_panel
 
-        # Settings Panel (con auth_controller, user y on_logout)
+        # Settings Panel
         self.settings_panel = SettingsPanel(
             self._content_area,
             notification_manager=self._notif_mgr,
@@ -177,7 +181,6 @@ class MainWindow:
         self._navigate("dht11")
         self._side_bar.set_active("dht11")
 
-        # Notificación de bienvenida
         self._notif_mgr.notify(
             "Sesión iniciada",
             f"Bienvenido, {self._user.username}",
@@ -189,7 +192,6 @@ class MainWindow:
         self._setup_authenticated_ui()
 
     def _navigate(self, section: str) -> None:
-        # Si el panel de notificaciones está visible, ocultarlo
         if self._notif_panel_visible:
             self._hide_notification_panel()
 
@@ -204,24 +206,20 @@ class MainWindow:
         self._side_bar.set_active(section)
 
     def _load_initial_data(self) -> None:
-        # DHT11 boards
-        dht11_boards = self._board_ctrl.get_boards_by_sketch("dht11")
+        dht11_boards = self._board_ctrl.get_boards_by_panel("dht11")
         self.dht11_panel.set_boards(dht11_boards)
 
-        # Eventos
         history = self._event_ctrl.load_history()
         for event in history:
             self.dht11_panel.add_event(event["text"], event["tipo"])
 
-        # All boards
         boards = self._board_ctrl.get_boards()
         for board in boards:
             self.arduino_panel.update_board(board)
 
-        # Actualizar contadores en barras
         self._top_bar.update_boards_count(len(boards))
         self._status_bar.update_usb_count(
-            sum(1 for b in boards if b.conn == "usb")
+            sum(1 for b in boards if b.conn == "usb" and b.status == "Conectada")
         )
 
         if self._user and self._user.is_admin():
@@ -235,6 +233,62 @@ class MainWindow:
             self.dht11_panel.show_history(board_id, readings)
 
     # --- Callbacks Arduino Panel ---
+
+    #def _on_register_manual(self) -> None:
+    #    """Abre diálogo para registrar una placa manualmente."""
+    #    ArduinoRegisterDialog(
+    #        self._root,
+    #        on_register=self._handle_manual_register,
+    #        available_ports=self._get_available_serial_ports(),
+    #    )
+
+    def _get_available_serial_ports(self) -> list[str]:
+        """Obtiene lista de puertos seriales disponibles."""
+        try:
+            import serial.tools.list_ports
+            ports = serial.tools.list_ports.comports()
+            return [p.device for p in ports]
+        except Exception:
+            return ["/dev/ttyUSB0", "/dev/ttyACM0", "COM3", "COM4"]
+
+    def _handle_manual_register(self, board_id: str, port: str, conn_type: str, extra: dict) -> None:
+        """Procesa el registro manual desde el diálogo."""
+        logger.info("Registro manual: %s (%s) en %s", board_id, conn_type, port)
+
+        existing = self._board_ctrl.get_board(board_id)
+        if existing:
+            self._notif_mgr.notify(
+                "Placa ya existe",
+                f"La placa '{board_id}' ya está registrada",
+                tipo="warning"
+            )
+            return
+
+        if conn_type == "usb":
+            board = self._board_ctrl.register_usb_board(board_id, port)
+        elif conn_type == "bluetooth":
+            board = self._board_ctrl.register_bluetooth_board(board_id, port)
+        elif conn_type == "wifi":
+            board = self._board_ctrl.register_wifi_board(board_id, port)
+        else:
+            self._notif_mgr.notify(
+                "Error",
+                f"Tipo de conexión desconocido: {conn_type}",
+                tipo="error"
+            )
+            return
+
+        self._notif_mgr.notify(
+            "Placa registrada",
+            f"'{board_id}' registrada como {conn_type.upper()}",
+            tipo="success"
+        )
+        self._event_ctrl.append(
+            board_id=board_id,
+            descripcion=f"Placa registrada manualmente ({conn_type})",
+            tipo="registro"
+        )
+
     def _on_register_board(self, board_id: str):
         logger.info("Solicitud de registro para board: %s", board_id)
 
@@ -264,15 +318,45 @@ class MainWindow:
         )
 
     def _on_remove_board(self, board_id: str):
-        self._board_ctrl.remove(board_id)
-        self._notif_mgr.notify(
-            "Placa eliminada",
-            f"{board_id} fue removida del sistema",
-            tipo="info"
+        """Confirma antes de eliminar y actualiza la UI."""
+        if self._removing:
+            return  # ← evita doble diálogo
+        self._removing = True
+
+        def _confirm_remove(confirmed: bool):
+            if not confirmed:
+                self._removing = False
+                return
+
+            # ← FIX: guardar evento ANTES de eliminar la placa (FK constraint)
+            self._event_ctrl.append(
+                board_id=board_id,
+                descripcion=f"Placa eliminada: {board_id}",
+                tipo="registro"
+            )
+
+            self._board_ctrl.remove(board_id)
+            self.arduino_panel.remove_board(board_id)
+            self._notif_mgr.notify(
+                "Placa eliminada",
+                f"{board_id} fue removida del sistema",
+                tipo="info"
+            )
+            self._removing = False
+
+        ConfirmDialog(
+            self._root,
+            title="Eliminar placa",
+            message=f"¿Eliminar permanentemente la placa '{board_id}'?\n\n"
+                    "Esta acción no se puede deshacer.",
+            on_result=_confirm_remove,
         )
 
     def _on_read_now(self, board_id: str):
         self._board_ctrl.read_now(board_id)
+    
+    def _on_identify_board(self, board_id: str):
+        self._board_ctrl.identify_now(board_id)
 
     def _on_scan_bluetooth(self) -> None:
         BluetoothScanDialog(
@@ -303,13 +387,14 @@ class MainWindow:
 
     def _update_sensor_ui(self, board_id: str, data: dict):
         board = self._board_ctrl.get_board(board_id)
-        if board and board.sketch_id == "dht11":
+        if board and self._board_ctrl.board_belongs_to_panel(board_id, "dht11"):
             self.dht11_panel.update_reading(board_id, data)
         self.arduino_panel.update_reading(board_id, data)
         self._status_bar.mark_message_received()
 
     def _on_sensor_identify(self, board_id: str, data: dict):
         logger.info("Identificado %s: %s", board_id, data)
+        self._board_ctrl.on_sensor_identify(board_id, data)
         self._notif_mgr.notify(
             "Placa identificada",
             f"{board_id}: {data.get('name', 'Unknown')} v{data.get('version', '?')}",
@@ -318,7 +403,7 @@ class MainWindow:
 
     def _on_board_updated(self, board: Board):
         self._root.after(0, lambda: self.arduino_panel.update_board(board))
-        if board.sketch_id == "dht11":
+        if self._board_ctrl.board_belongs_to_panel(board.id, "dht11"):
             self._root.after(0, lambda: self.dht11_panel.update_board(board))
         # Actualizar contadores
         boards = self._board_ctrl.get_boards()
@@ -338,14 +423,12 @@ class MainWindow:
             self._status_bar.update_alerts(1)
 
     def _on_bell_clicked(self):
-        """Abrir/ocultar panel de notificaciones."""
         if self._notif_panel_visible:
             self._hide_notification_panel()
         else:
             self._show_notification_panel()
 
     def _show_notification_panel(self):
-        """Muestra el panel de notificaciones como overlay flotante."""
         if self._notif_panel is not None:
             self._notif_panel.destroy()
 
@@ -354,7 +437,6 @@ class MainWindow:
             notification_manager=self._notif_mgr,
             on_close=self._hide_notification_panel,
         )
-        # Posicionar en la esquina superior derecha, debajo del top bar
         self._notif_panel.place(
             relx=1.0, x=-20, y=TOPBAR_HEIGHT + 10,
             anchor="ne",
@@ -364,7 +446,6 @@ class MainWindow:
         logger.info("Panel de notificaciones abierto")
 
     def _hide_notification_panel(self):
-        """Oculta el panel de notificaciones."""
         if self._notif_panel is not None:
             self._notif_panel.destroy()
             self._notif_panel = None
@@ -441,10 +522,9 @@ class MainWindow:
             )
             return
 
-        # Diálogo con password temporal
         dialog = ctk.CTkToplevel(self._root)
         dialog.title("Contraseña temporal generada")
-        dialog.geometry("400x200")
+        dialog.geometry("600x600")
         dialog.resizable(False, False)
 
         ctk.CTkLabel(
@@ -500,45 +580,33 @@ class MainWindow:
     # LOGOUT
     # ================================================================
     def _do_logout(self):
-        """Cierra la sesión actual y vuelve a la pantalla de login."""
         logger.info("Cerrando sesión de usuario: %s", self._user.username if self._user else "unknown")
 
         if self._notif_mgr:
             self._notif_mgr.reset()
 
-        # Notificar logout (antes de cleanup para que el toast se muestre)
         self._notif_mgr.notify(
             "Sesión cerrada",
             f"Hasta luego, {self._user.username if self._user else 'usuario'}",
             tipo="info"
         )
 
-        # Limpiar callbacks del sensor manager
         self._sensor_manager.set_callbacks(on_reading=None, on_identify=None)
-
-        # Cleanup centralizado (incluye _event_ctrl, _board_ctrl, timers, etc.)
         self.cleanup()
 
-        # Ocultar panel de notificaciones si está visible
         if self._notif_panel_visible:
             self._hide_notification_panel()
 
-        # Ocultar sidebar, topbar, statusbar
         self._side_bar.grid_remove()
         self._top_bar.grid_remove()
         self._status_bar.grid_remove()
 
-        # Limpiar área de contenido
         if self._current_panel is not None:
             self._current_panel.grid_remove()
             self._current_panel = None
 
-        # Resetear usuario
         self._user = None
-
-        # Volver a mostrar login
         self._navigate("login")
 
-        # Llamar al callback externo si existe
         if self._on_logout:
             self._on_logout()

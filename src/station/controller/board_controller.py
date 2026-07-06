@@ -41,6 +41,12 @@ class BoardController:
     def get_boards(self) -> list[Board]:
         return self._service.get_boards()
 
+    def get_boards_by_panel(self, panel_key: str) -> list[Board]:
+        return self._service.get_boards_by_panel(panel_key)
+
+    def board_belongs_to_panel(self, board_id: str, panel_key: str) -> bool:
+        return self._service.board_belongs_to_panel(board_id, panel_key)
+
     def get_board(self, board_id: str) -> Board | None:
         return self._service.get_board(board_id)
 
@@ -53,6 +59,9 @@ class BoardController:
     def read_now(self, board_id: str) -> bool:
         return self._service.request_read(board_id)
 
+    def identify_now(self, board_id: str) -> bool:
+        return self._service.request_identify(board_id)
+
     def get_readings(self, board_id: str, sensor_type: str | None = None,
                      limit: int = 100, start=None, end=None) -> list[dict]:
         return self._service.get_readings(board_id, sensor_type, limit, start, end)
@@ -61,3 +70,6 @@ class BoardController:
         if self._on_board_updated:
             self._service.remove_observer(self._on_service_board_changed)
             self._on_board_updated = None
+
+    def on_sensor_identify(self, board_id: str, data: dict) -> None:
+        self._service.on_sensor_identify(board_id, data)

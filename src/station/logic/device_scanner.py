@@ -45,7 +45,7 @@ class USBScanner(threading.Thread):
                 for p in ports:
                     # ← CORREGIDO: detectar por nombre de dispositivo O VID conocido
                     is_arduino_port = self._is_likely_arduino(p)
-                    
+
                     if is_arduino_port:
                         # Extraer todos los datos de fábrica relevantes
                         port_data = {
@@ -92,6 +92,14 @@ class USBScanner(threading.Thread):
     def stop(self):
         self._running = False
 
+    def get_known_ports(self) -> dict:
+        """← NUEVO: Retorna los puertos actualmente conocidos."""
+        return dict(self._known_ports)
+
+    def is_port_connected(self, port: str) -> bool:
+        """← NUEVO: Verifica si un puerto específico sigue conectado."""
+        return port in self._known_ports
+
     @staticmethod
     def _is_likely_arduino(port) -> bool:
         """
@@ -104,24 +112,24 @@ class USBScanner(threading.Thread):
             # Es un puerto serial USB, verificar si el chip es conocido
             if port.vid is not None and port.vid in KNOWN_ARDUINO_VIDS:
                 return True
-            
+
             # Si no tenemos VID, confiar en la descripción
             desc = (port.description or "").lower()
             arduino_keywords = [
-                "arduino", "ch340", "ch341", "ft232", "cp210", 
+                "arduino", "ch340", "ch341", "ft232", "cp210",
                 "usb-serial", "usb serial", "serial"
             ]
             if any(kw in desc for kw in arduino_keywords):
                 return True
-        
+
         # 2. macOS: /dev/cu.usbserial* o /dev/cu.usbmodem*
         if "usbserial" in device_name or "usbmodem" in device_name:
             return True
-        
+
         # 3. Windows: COMx con VID conocido
         if port.vid is not None and port.vid in KNOWN_ARDUINO_VIDS:
             return True
-        
+
         return False
 
     @staticmethod

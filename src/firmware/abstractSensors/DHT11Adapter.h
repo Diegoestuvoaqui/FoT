@@ -1,4 +1,3 @@
-// src/firmware/abstractSensors/DHT11Adapter.h
 #ifndef DHT11_ADAPTER_H
 #define DHT11_ADAPTER_H
 
@@ -7,14 +6,19 @@
 
 class DHT11Adapter : public ISensor {
 private:
-    DHT* _dht;          // FIX: puntero a DHT compartido, no instancia propia
+    DHT* _dht;
     uint8_t _pin;
     float _lastTemp;
     float _lastHum;
-    bool _readTemp;     // true = temp, false = hum
+    bool _readTemp;
+
+    // ← NUEVO: Cache compartido entre todas las instancias
+    static float _sharedTemp;
+    static float _sharedHum;
+    static unsigned long _lastReadMs;
+    static const unsigned long MIN_READ_INTERVAL = 2000; // 2 segundos
 
 public:
-    // FIX: ahora recibe el DHT ya inicializado y el modo
     DHT11Adapter(DHT* dht, const char* name);
 
     float read() override;

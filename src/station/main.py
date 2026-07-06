@@ -6,6 +6,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox
 
+
 import customtkinter as ctk
 
 # --------------------------------------------------------------------------
@@ -21,6 +22,7 @@ from domain.user import User
 from logic.data_receiver import DataReceiver
 from logic.mqtt_data_dispatcher import MQTTDataDispatcher
 from logic.sensor_manager import SensorManager
+from logic.device_scanner import USBScanner
 from service.auth_service import AuthService
 from service.board_service import BoardService
 from service.event_service import EventService
@@ -76,6 +78,50 @@ def _build_main(root: ctk.CTk,
     logger.info("Cargando boards para usuario %s", current_user.username)
 
     # ------------------------------------------------------------------
+    # Capa de Servicios (DEBE crearse antes del USBScanner)
+    # ------------------------------------------------------------------
+    event_service = EventService(db)
+
+    board_service = BoardService(
+        db=db,
+        sensor_manager=sensor_manager,
+    )
+    board_service.load_from_db()
+
+    # ------------------------------------------------------------------
+    # Escáner USB: detecta placas nuevas conectadas por cable
+    # ------------------------------------------------------------------
+    def on_new_usb_board(port_data: dict) -> None:
+        """Auto-registra (o actualiza el puerto de) una placa detectada por USB."""
+        board_id = port_data.get("serial_number") or port_data["device"]
+        board_service.register_board(
+            board_id=board_id,
+            port=port_data["device"],
+            conn_type="usb",
+            factory_data=port_data,
+        )
+        logger.info("Placa USB detectada: %s en %s", board_id, port_data["device"])
+
+    def on_remove_usb_board(port_device: str) -> None:
+        """Marca una placa como desconectada cuando su puerto físico desaparece."""
+        for board in board_service.get_boards():
+            if board.port == port_device and board.conn == "usb":
+                board_service.mark_board_disconnected(
+                    board.id, f"Puerto {port_device} desconectado"
+                )
+                logger.info(
+                    "Placa USB desconectada físicamente: %s (puerto %s)",
+                    board.id, port_device,
+                )
+                break
+
+    usb_scanner = USBScanner(
+        on_new_board=on_new_usb_board,
+        on_remove_board=on_remove_usb_board,
+    )
+    usb_scanner.start()
+
+    # ------------------------------------------------------------------
     # Conectar callbacks del SensorManager al DataReceiver
     # ------------------------------------------------------------------
     def on_sensor_reading(board_id: str, data: dict):
@@ -85,19 +131,9 @@ def _build_main(root: ctk.CTk,
         data_receiver.on_identify(board_id, data)
         board_service.on_sensor_identify(board_id, data)
 
-    sensor_manager.set_callbacks(on_reading=on_sensor_reading, on_identify=on_sensor_identify)
-
-    # ------------------------------------------------------------------
-    # Capa de Servicios
-    # ------------------------------------------------------------------
-
-    event_service = EventService(db)
-
-    board_service = BoardService(
-        db=db,
-        sensor_manager=sensor_manager,
+    sensor_manager.set_callbacks(
+        on_reading=on_sensor_reading, on_identify=on_sensor_identify
     )
-    board_service.load_from_db()
 
     # ------------------------------------------------------------------
     # Dispatcher MQTT global para todas las placas WiFi
@@ -110,7 +146,7 @@ def _build_main(root: ctk.CTk,
             logger.info("Placa WiFi auto-registrada desde MQTT: %s", board_id)
 
     mqtt_dispatcher = MQTTDataDispatcher(
-        sensor_manager=sensor_manager,  # ← para marcar bridges como vistos
+        sensor_manager=sensor_manager,
         on_reading=on_sensor_reading,
         on_identify=on_sensor_identify,
         on_new_board=on_new_wifi_board,
@@ -146,6 +182,7 @@ def _build_main(root: ctk.CTk,
         sensor_manager.disconnect_all()
         mqtt_bus.unregister(mqtt_dispatcher)
         mqtt_bus.stop()
+        usb_scanner.stop()
         event_controller.cleanup()
         board_controller.cleanup()
         db.close()

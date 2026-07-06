@@ -61,6 +61,13 @@ class Database:
                     PRIMARY KEY (board_id, sensor_type)
                 );
 
+                CREATE TABLE IF NOT EXISTS sketches (
+                    sketch_id TEXT PRIMARY KEY,
+                    sketch_name TEXT,
+                    panel_key TEXT,
+                    description TEXT
+                );
+
                 CREATE TABLE IF NOT EXISTS lecturas (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     board_id TEXT NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
@@ -92,6 +99,19 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_boards_sketch
                     ON boards(sketch_id);
             """)
+            self._conn.commit()
+            self._conn.executemany(
+                """
+                INSERT OR IGNORE INTO sketches (sketch_id, sketch_name, panel_key, description)
+                VALUES (?, ?, ?, ?)
+                """,
+                [
+                    ("dht11", "DHT11 Sensor", "dht11", "UNO R4 WiFi + DHT11"),
+                    ("uno_r3_dht11", "UNO R3 + DHT11", "dht11", "UNO R3 clásico + DHT11"),
+                    ("uno_r4_wifi_dht11","UNO R4 + DHT11", "dht11","UNO R4 para DHT11"),
+                    ("lafvin_r3_ch340_dht11", "LAFVIN R3 CH340 + DHT11", "dht11", "Clon CH340 + DHT11 via SERIAL"),
+                ],
+            )
             self._conn.commit()
 
     # --------------------------------------------------------------------------
@@ -260,6 +280,40 @@ class Database:
                 "SELECT * FROM boards_sensors WHERE board_id = ?", (board_id,)
             )
             return [dict(row) for row in cur.fetchall()]
+
+
+
+    # --------------------------------------------------------------------------
+    # SKETCHES (catálogo)
+    # --------------------------------------------------------------------------
+    def get_all_sketches(self) -> list[dict]:
+        with self._lock:
+            cur = self._conn.execute("SELECT * FROM sketches")
+            return [dict(row) for row in cur.fetchall()]
+
+    def get_sketch(self, sketch_id: str) -> dict | None:
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT * FROM sketches WHERE sketch_id = ?", (sketch_id,)
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+    def upsert_sketch(self, sketch_id: str, sketch_name: str = "",
+                       panel_key: str | None = None, description: str = "") -> None:
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO sketches (sketch_id, sketch_name, panel_key, description)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(sketch_id) DO UPDATE SET
+                    sketch_name = excluded.sketch_name,
+                    panel_key = COALESCE(excluded.panel_key, sketches.panel_key),
+                    description = excluded.description
+                """,
+                (sketch_id, sketch_name, panel_key, description),
+            )
+            self._conn.commit()
 
     # --------------------------------------------------------------------------
     # LECTURAS

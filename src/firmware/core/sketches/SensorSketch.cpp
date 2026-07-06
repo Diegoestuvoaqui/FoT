@@ -45,7 +45,7 @@ void SensorSketch::readAndSend() {
         float val = s->read();
         if (s->isValid()) {
             JsonObject reading = data[s->getName()].to<JsonObject>();
-            reading["value"] = val;
+            reading["value"] = val;  // ← Ahora val es un número válido
             reading["unit"] = s->getUnit();
             anyValid = true;
         }

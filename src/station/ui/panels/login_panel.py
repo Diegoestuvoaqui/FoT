@@ -209,7 +209,7 @@ class LoginPanel(ctk.CTkFrame):
         """Muestra diálogo modal para cambiar contraseña obligatoria."""
         dialog = ctk.CTkToplevel(self)
         dialog.title("Cambio de contraseña obligatorio")
-        dialog.geometry("500x500")
+        dialog.geometry("600x600")
         dialog.resizable(False, False)
         dialog.transient(self)
         dialog.grab_set()

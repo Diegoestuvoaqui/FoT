@@ -1,7 +1,10 @@
-// src/firmware/abstractSensors/DHT11Adapter.cpp
 #include "DHT11Adapter.h"
-//#include <cmath.h>  // FIX: cmath en lugar de math.h
 #include "math.h"
+
+// ← NUEVO: Definir variables estáticas
+float DHT11Adapter::_sharedTemp = NAN;
+float DHT11Adapter::_sharedHum = NAN;
+unsigned long DHT11Adapter::_lastReadMs = 0;
 
 DHT11Adapter::DHT11Adapter(DHT* dht, const char* name)
     : _dht(dht), _lastTemp(NAN), _lastHum(NAN) {
@@ -9,20 +12,31 @@ DHT11Adapter::DHT11Adapter(DHT* dht, const char* name)
 }
 
 float DHT11Adapter::read() {
-    // FIX: leemos ambos valores de una sola vez para evitar doble lectura del bus
-    _lastTemp = _dht->readTemperature();
-    _lastHum  = _dht->readHumidity();
+    unsigned long now = millis();
 
-    return _readTemp ? _lastTemp : _lastHum;
+    // ← NUEVO: Solo leer del bus si pasaron 2 segundos o nunca se leyó
+    if (now - _lastReadMs >= MIN_READ_INTERVAL || isnan(_sharedTemp)) {
+        _sharedTemp = _dht->readTemperature();
+        _sharedHum = _dht->readHumidity();
+        _lastReadMs = now;
+    }
+
+    // ← NUEVO: Retornar el valor cacheado, no leer de nuevo
+    if (_readTemp) {
+        _lastTemp = _sharedTemp;
+        return _sharedTemp;
+    } else {
+        _lastHum = _sharedHum;
+        return _sharedHum;
+    }
 }
 
 bool DHT11Adapter::isValid() {
+    // ← VOLVER a la validación original, pero con rangos amplios
     if (_readTemp) {
-        // FIX: rangos ajustados a DHT11 real: 0–50 °C
-        return !isnan(_lastTemp) && _lastTemp >= 0.0f && _lastTemp <= 50.0f;
+        return !isnan(_lastTemp) && _lastTemp >= -20.0f && _lastTemp <= 60.0f;
     } else {
-        // FIX: rangos ajustados a DHT11 real: 20–90 % HR
-        return !isnan(_lastHum) && _lastHum >= 20.0f && _lastHum <= 90.0f;
+        return !isnan(_lastHum) && _lastHum >= 5.0f && _lastHum <= 95.0f;
     }
 }
 

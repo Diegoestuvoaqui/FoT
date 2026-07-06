@@ -134,6 +134,10 @@ class SensorManager:
 
     def request_read(self, board_id: str) -> bool:
         return self.send_command(board_id, {"cmd": "read"})
+    
+    def request_identify(self, board_id: str) -> bool:
+        return self.send_command(board_id, {"cmd": "identify"})
+
 
     def set_interval(self, board_id: str, ms: int) -> bool:
         return self.send_command(board_id, {"cmd": "interval", "ms": ms})

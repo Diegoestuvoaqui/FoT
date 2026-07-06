@@ -138,7 +138,11 @@ class DHT11Panel(ctk.CTkFrame):
             sensor = readings.get(key, {})
             if isinstance(sensor, dict) and "value" in sensor:
                 val = sensor["value"]
-                lbl.configure(text=f"{val:.1f}")
+                # ← NUEVO: Proteger contra None/NaN
+                if val is not None and isinstance(val, (int, float)):
+                    lbl.configure(text=f"{val:.1f}")
+                else:
+                    lbl.configure(text="Err")
             else:
                 lbl.configure(text="—")
 
@@ -147,8 +151,12 @@ class DHT11Panel(ctk.CTkFrame):
             text_color=COLORS["accent"]
         )
 
-        # ← NUEVO: Agregar al gráfico en tiempo real
-        self._add_reading_to_chart(readings, ts)
+        # ← NUEVO: Solo agregar al gráfico si hay datos válidos
+        if readings and any(
+                isinstance(readings.get(k, {}).get("value"), (int, float))
+                for k in ["temp", "hum"]
+        ):
+            self._add_reading_to_chart(readings, ts)
 
     def show_history(self, board_id: str, readings: list[dict]):
         """Carga historial desde DB al seleccionar una placa."""
