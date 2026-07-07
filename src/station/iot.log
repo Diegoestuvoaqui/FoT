@@ -1599,3 +1599,30 @@
 2026-07-05 13:11:38,453 INFO logic.serial_bridge — Desconectado de /dev/ttyUSB0
 2026-07-05 13:11:38,453 INFO logic.sensor_manager — /dev/ttyUSB0 desconectada
 2026-07-05 13:11:39,407 INFO __main__ — IoT Estación Base cerrada
+2026-07-06 17:15:57,546 INFO __main__ — Arrancando FoT Estación Base
+2026-07-06 17:15:57,549 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/iot.db
+2026-07-06 17:15:57,554 INFO __main__ — MQTT broker local en localhost:1883
+2026-07-06 17:15:57,631 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-07-06 17:15:57,802 INFO __main__ — UI lista, entrando en mainloop (login)
+2026-07-06 17:16:05,170 INFO service.auth_service — Login exitoso: dda (role=user, must_change=False)
+2026-07-06 17:16:05,177 INFO __main__ — Usuario autenticado: dda (role=user)
+2026-07-06 17:16:05,177 INFO __main__ — Cargando boards para usuario dda
+2026-07-06 17:16:05,184 INFO logic.device_scanner — Arduino detectado: /dev/ttyUSB0 - USB Serial (S/N: N/A, VID/PID: 1A86:7523, chip: WCH CH340/CH341)
+2026-07-06 17:16:05,185 INFO __main__ — Placa USB detectada: /dev/ttyUSB0 en /dev/ttyUSB0
+2026-07-06 17:16:06,174 INFO ui.widgets.notification_manager — Notificación [success]: Sesión iniciada — Bienvenido, dda
+2026-07-06 17:16:06,175 INFO __main__ — UI lista, entrando en mainloop
+2026-07-06 17:16:39,821 INFO logic.firmware_uploader — Ejecutando avrdude: avrdude -p atmega328p -c arduino -P /dev/ttyUSB0 -b 115200 -U flash:w:/home/dda/Documents/FoT/.pio/build/lafvin_r3_ch340_dht11/firmware.hex:i
+2026-07-06 17:16:54,061 INFO logic.serial_bridge — Conectado a /dev/ttyUSB0 @ 115200 baud
+2026-07-06 17:16:55,569 WARNING logic.serial_bridge — Línea no JSON: LAFVIN_R3_CH340_DHT11_Sketch::setup()
+2026-07-06 17:16:55,569 WARNING logic.serial_bridge — Línea no JSON: SensorSketch::setup()
+2026-07-06 17:16:55,569 WARNING logic.serial_bridge — Línea no JSON: Comandos: read, interval <ms>, identify
+2026-07-06 17:16:57,068 INFO ui.widgets.notification_manager — Notificación [success]: Placa conectada — /dev/ttyUSB0 está ahora en línea
+2026-07-06 17:16:57,079 INFO ui.main_window — Identificado /dev/ttyUSB0: {'sketch': 'lafvin_r3_ch340_dht11', 'name': 'LAFVIN R3 CH340 + DHT11', 'version': '1.0', 'sensors': 2}
+2026-07-06 17:16:57,213 INFO ui.widgets.notification_manager — Notificación [info]: Placa identificada — /dev/ttyUSB0: LAFVIN R3 CH340 + DHT11 v1.0
+2026-07-06 17:17:44,945 INFO ui.main_window — Panel de notificaciones abierto
+2026-07-06 17:17:47,333 INFO ui.main_window — Panel de notificaciones cerrado
+2026-07-06 17:18:02,180 INFO logic.serial_bridge — Desconectado de /dev/ttyUSB0
+2026-07-06 17:18:02,180 INFO logic.sensor_manager — /dev/ttyUSB0 desconectada
+2026-07-06 17:18:02,191 INFO ui.widgets.notification_manager — Notificación [warning]: Placa desconectada — /dev/ttyUSB0 se desconectó
+2026-07-06 17:18:14,717 INFO __main__ — Cerrando FoT Estación Base
+2026-07-06 17:18:14,832 INFO __main__ — IoT Estación Base cerrada
