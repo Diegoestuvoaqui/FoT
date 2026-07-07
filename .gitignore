@@ -22,3 +22,6 @@ test_output.log
 *.toml
 platformio.includes
 doc
+src/station/fot.log
+src/station/iot.log
+src/station/iot.log
