@@ -11,6 +11,7 @@ class BoardController:
     def __init__(self, board_service: BoardService):
         self._service = board_service
         self._on_board_updated = None
+        self._service.set_disconnect_callback(self._on_physical_disconnect)
 
     def set_ui_callback(self, callback):
         self._on_board_updated = callback
@@ -73,3 +74,12 @@ class BoardController:
 
     def on_sensor_identify(self, board_id: str, data: dict) -> None:
         self._service.on_sensor_identify(board_id, data)
+
+
+    def _on_physical_disconnect(self, board_id: str):
+        """Callback invocado cuando un bridge detecta desconexión física."""
+        logger.info("Desconexión física detectada: %s", board_id)
+        self._service.mark_board_disconnected(board_id, "Conexión física perdida")
+
+    def check_wifi_timeouts(self) -> None:
+        self._service.check_wifi_timeouts()

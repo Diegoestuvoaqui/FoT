@@ -23,7 +23,9 @@ class WiFiBridge:
                  board_id: str,
                  mqtt_bus,
                  on_command_response: Optional[Callable[[dict], None]] = None,
+                 on_disconnect: Optional[Callable[[], None]] = None,
                  timeout: float = 30.0):
+        self._on_disconnect = on_disconnect
         self.board_id = board_id
         self._mqtt_bus = mqtt_bus
         self._on_cmd_response = on_command_response
@@ -59,6 +61,21 @@ class WiFiBridge:
         """Llamado por el dispatcher cuando llega un mensaje de esta placa."""
         self._last_seen = time.time()
         self._connected = True
+
+    def check_timeout(self) -> bool:
+        """Devuelve True si sigue conectado. Si venció, notifica y devuelve False."""
+        if not self._connected:
+            return False
+        if time.time() - self._last_seen > self._timeout:
+            self._connected = False
+            logger.info("WiFiBridge timeout para %s", self.board_id)
+            if self._on_disconnect:
+                try:
+                    self._on_disconnect()
+                except Exception as e:
+                    logger.error("Error en on_disconnect WiFi: %s", e)
+            return False
+        return True
 
     # ------------------------------------------------------------------
     # Comunicación

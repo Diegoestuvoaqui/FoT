@@ -186,6 +186,7 @@ class MainWindow:
             f"Bienvenido, {self._user.username}",
             tipo="success"
         )
+        self._start_wifi_checker()
 
     def _on_login_success(self, user) -> None:
         self._user = user
@@ -610,3 +611,13 @@ class MainWindow:
 
         if self._on_logout:
             self._on_logout()
+
+
+    def _start_wifi_checker(self):
+        """← NUEVO: heartbeat periódico para detectar WiFi caído."""
+        self._check_wifi()
+        self._root.after(5000, self._start_wifi_checker)
+
+    def _check_wifi(self):
+        """← NUEVO: verifica timeouts de WiFi."""
+        self._board_ctrl.check_wifi_timeouts()

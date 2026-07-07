@@ -1626,3 +1626,45 @@
 2026-07-06 17:18:02,191 INFO ui.widgets.notification_manager — Notificación [warning]: Placa desconectada — /dev/ttyUSB0 se desconectó
 2026-07-06 17:18:14,717 INFO __main__ — Cerrando FoT Estación Base
 2026-07-06 17:18:14,832 INFO __main__ — IoT Estación Base cerrada
+2026-07-07 15:06:59,928 INFO __main__ — Arrancando FoT Estación Base
+2026-07-07 15:06:59,929 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/iot.db
+2026-07-07 15:06:59,932 INFO __main__ — MQTT broker local en localhost:1883
+2026-07-07 15:06:59,932 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-07-07 15:07:00,082 INFO __main__ — UI lista, entrando en mainloop (login)
+2026-07-07 15:07:05,237 INFO service.auth_service — Login exitoso: dda (role=user, must_change=False)
+2026-07-07 15:07:05,245 INFO __main__ — Usuario autenticado: dda (role=user)
+2026-07-07 15:07:05,245 INFO __main__ — Cargando boards para usuario dda
+2026-07-07 15:07:14,434 INFO __main__ — Login cancelado, saliendo
+2026-07-07 15:11:21,723 INFO __main__ — Arrancando FoT Estación Base
+2026-07-07 15:11:21,724 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/iot.db
+2026-07-07 15:11:21,726 INFO __main__ — MQTT broker local en localhost:1883
+2026-07-07 15:11:21,756 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-07-07 15:11:21,827 INFO __main__ — UI lista, entrando en mainloop (login)
+2026-07-07 15:11:30,696 INFO service.auth_service — Login exitoso: dda (role=user, must_change=False)
+2026-07-07 15:11:30,703 INFO __main__ — Usuario autenticado: dda (role=user)
+2026-07-07 15:11:30,703 INFO __main__ — Cargando boards para usuario dda
+2026-07-07 15:11:31,341 INFO ui.widgets.notification_manager — Notificación [success]: Sesión iniciada — Bienvenido, dda
+2026-07-07 15:11:31,341 INFO __main__ — UI lista, entrando en mainloop
+2026-07-07 15:12:17,634 INFO ui.main_window — Panel de notificaciones abierto
+2026-07-07 15:12:20,700 INFO ui.main_window — Panel de notificaciones cerrado
+2026-07-07 15:13:50,719 INFO ui.widgets.notification_manager — Notificación [warning]: Placa desconectada — /dev/ttyUSB0 se desconectó
+2026-07-07 15:13:53,565 ERROR logic.serial_bridge — No se pudo conectar a /dev/ttyUSB0: [Errno 2] could not open port /dev/ttyUSB0: [Errno 2] No such file or directory: '/dev/ttyUSB0'
+2026-07-07 15:13:53,569 INFO ui.widgets.notification_manager — Notificación [error]: Error de conexión — No se pudo conectar /dev/ttyUSB0: No se pudo conectar a /dev/ttyUSB0
+2026-07-07 15:13:53,569 ERROR ui.main_window — Error conectando /dev/ttyUSB0: No se pudo conectar a /dev/ttyUSB0
+2026-07-07 15:13:58,573 INFO __main__ — Cerrando FoT Estación Base
+2026-07-07 15:13:58,934 INFO __main__ — IoT Estación Base cerrada
+2026-07-07 15:43:24,767 INFO __main__ — Arrancando FoT Estación Base
+2026-07-07 15:43:24,768 INFO __main__ — Base de datos lista en /home/dda/Documents/FoT/src/station/data/iot.db
+2026-07-07 15:43:24,771 INFO __main__ — MQTT broker local en localhost:1883
+2026-07-07 15:43:24,771 INFO connection.mqtt_client — MQTT conectado a localhost:1883
+2026-07-07 15:43:24,925 INFO __main__ — UI lista, entrando en mainloop (login)
+2026-07-07 15:43:28,811 INFO service.auth_service — Login exitoso: dda (role=user, must_change=False)
+2026-07-07 15:43:28,815 INFO __main__ — Usuario autenticado: dda (role=user)
+2026-07-07 15:43:28,815 INFO __main__ — Cargando boards para usuario dda
+2026-07-07 15:43:29,483 INFO ui.widgets.notification_manager — Notificación [success]: Sesión iniciada — Bienvenido, dda
+2026-07-07 15:43:29,484 INFO __main__ — UI lista, entrando en mainloop
+2026-07-07 15:43:34,306 ERROR logic.serial_bridge — No se pudo conectar a /dev/ttyUSB0: [Errno 2] could not open port /dev/ttyUSB0: [Errno 2] No such file or directory: '/dev/ttyUSB0'
+2026-07-07 15:43:34,311 INFO ui.widgets.notification_manager — Notificación [error]: Error de conexión — No se pudo conectar /dev/ttyUSB0: No se pudo conectar a /dev/ttyUSB0
+2026-07-07 15:43:34,311 ERROR ui.main_window — Error conectando /dev/ttyUSB0: No se pudo conectar a /dev/ttyUSB0
+2026-07-07 15:43:50,976 INFO __main__ — Cerrando FoT Estación Base
+2026-07-07 15:43:51,871 INFO __main__ — IoT Estación Base cerrada

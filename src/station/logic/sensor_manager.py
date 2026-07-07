@@ -24,8 +24,10 @@ class SensorManager:
     def __init__(self,
                  on_reading: Optional[Callable[[str, dict], None]] = None,
                  on_identify: Optional[Callable[[str, dict], None]] = None,
+                 on_disconnect: Optional[Callable[[str], None]] = None,
                  mqtt_bus=None):
         self._bridges: dict[str, SerialBridge | WiFiBridge] = {}
+        self._on_disconnect = on_disconnect
         self._on_reading = on_reading
         self._on_identify = on_identify
         self._mqtt_bus = mqtt_bus
@@ -36,11 +38,14 @@ class SensorManager:
 
     def set_callbacks(self,
                       on_reading: Optional[Callable[[str, dict], None]] = None,
-                      on_identify: Optional[Callable[[str, dict], None]] = None) -> None:
+                      on_identify: Optional[Callable[[str, dict], None]] = None,
+                      on_disconnect: Optional[Callable[[str], None]] = None) -> None:
         if on_reading is not None:
             self._on_reading = on_reading
         if on_identify is not None:
             self._on_identify = on_identify
+        if on_disconnect is not None:
+            self._on_disconnect = on_disconnect
 
     # ------------------------------------------------------------------
     # Conexiones
@@ -59,7 +64,15 @@ class SensorManager:
             if "sketch" in data and self._on_identify:
                 self._on_identify(board_id, data)
 
-        bridge = SerialBridge(port=port, on_reading=on_read, on_command_response=on_resp)
+        def on_disconnect():
+            self._bridges.pop(board_id, None)
+            if self._on_disconnect:
+                try:
+                    self._on_disconnect(board_id)
+                except Exception as e:
+                    logger.error("Error en on_disconnect callback: %s", e)
+
+        bridge = SerialBridge(port=port, on_reading=on_read, on_command_response=on_resp,on_disconnect=on_disconnect)
         if bridge.connect():
             self._bridges[board_id] = bridge
             bridge.request_identify()
@@ -74,7 +87,15 @@ class SensorManager:
             if self._on_reading:
                 self._on_reading(board_id, data)
 
-        bridge = BluetoothBridge(port=port, on_reading=on_read)
+        def on_disconnect():
+            self._bridges.pop(board_id, None)
+            if self._on_disconnect:
+                try:
+                    self._on_disconnect(board_id)
+                except Exception as e:
+                    logger.error("Error en on_disconnect callback: %s", e)
+
+        bridge = BluetoothBridge(port=port, on_reading=on_read, on_disconnect=on_disconnect)
         if bridge.connect():
             self._bridges[board_id] = bridge
             bridge.request_identify()
@@ -95,10 +116,20 @@ class SensorManager:
             logger.error("No hay MQTTEventBus configurado para WiFi")
             return False
 
+        def on_disconnect():
+            self._bridges.pop(board_id, None)
+            if self._on_disconnect:
+                try:
+                    self._on_disconnect(board_id)
+                except Exception as e:
+                    logger.error("Error en on_disconnect callback: %s", e)
+
+
         # WiFiBridge ya no necesita callbacks de lectura — el dispatcher global los maneja
         bridge = WiFiBridge(
             board_id=board_id,
             mqtt_bus=self._mqtt_bus,
+            on_disconnect=on_disconnect,
             # on_command_response opcional si queremos manejar respuestas a comandos
         )
         if bridge.connect():
@@ -157,3 +188,9 @@ class SensorManager:
     def get_bridge(self, board_id: str) -> SerialBridge | WiFiBridge | None:
         """Obtiene el bridge de una placa para operaciones avanzadas."""
         return self._bridges.get(board_id)
+
+    def check_wifi_timeouts(self) -> None:
+        """Verifica timeouts de bridges WiFi. Llamar periódicamente."""
+        for board_id, bridge in list(self._bridges.items()):
+            if isinstance(bridge, WiFiBridge):
+                bridge.check_timeout()

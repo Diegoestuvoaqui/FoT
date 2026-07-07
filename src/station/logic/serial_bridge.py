@@ -24,6 +24,7 @@ class SerialBridge:
                  baud: int = 115200,
                  on_reading: Optional[Callable[[dict], None]] = None,
                  on_command_response: Optional[Callable[[dict], None]] = None,
+                 on_disconnect: Optional[Callable[[], None]] = None,
                  timeout: float = 1.0):
         self.port = port
         self.baud = baud
@@ -33,6 +34,7 @@ class SerialBridge:
         self._reader_thread: Optional[threading.Thread] = None
         self._running = False
         self.timeout = timeout
+        self._on_disconnect = on_disconnect
 
     def connect(self) -> bool:
         try:
@@ -86,11 +88,15 @@ class SerialBridge:
 
     def _read_loop(self) -> None:
         buffer = ""
+
+
         while self._running and self._serial and self._serial.is_open:
             try:
                 if self._serial.in_waiting > 0:
                     chunk = self._serial.read(self._serial.in_waiting).decode("utf-8", errors="replace")
                     buffer += chunk
+
+
                     while "\n" in buffer:
                         line, buffer = buffer.split("\n", 1)
                         line = line.strip()
@@ -101,6 +107,11 @@ class SerialBridge:
             except serial.SerialException:
                 logger.error("Error de lectura serial, cerrando")
                 self._running = False
+                if self.disconnect:
+                    try:
+                        self._on_disconnect
+                    except Exception as e:
+                        logger.error("Error en on_disconnect: %s", e)
                 break
             except Exception as e:
                 logger.error("Error inesperado: %s", e)

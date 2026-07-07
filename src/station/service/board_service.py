@@ -337,6 +337,15 @@ class BoardService:
             except Exception as e:
                 logger.error("Error en observer: %s", e)
 
+
+    def set_disconnect_callback(self, callback: Callable[[str], None]) -> None:
+        """← NUEVO: Conecta el callback de desconexión física al SensorManager."""
+        self._sensor_mgr.set_callbacks(on_disconnect=callback)
+
+    def check_wifi_timeouts(self) -> None:
+        """← NUEVO: Delega al SensorManager."""
+        self._sensor_mgr.check_wifi_timeouts()
+
     def stop(self) -> None:
         self._sensor_mgr.disconnect_all()
         self._boards.clear()
