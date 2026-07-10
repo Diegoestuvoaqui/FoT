@@ -54,6 +54,9 @@ class BoardController:
     def get_boards_by_sketch(self, sketch_id: str) -> list[Board]:
         return self._service.get_boards_by_sketch(sketch_id)
 
+    def get_boards_visible_to_user(self, usuario_id: int) -> list[Board]:
+        return self._service.get_boards_visible_to_user(usuario_id)
+
     def is_connected(self, board_id: str) -> bool:
         return self._service.is_connected(board_id)
 
@@ -83,3 +86,19 @@ class BoardController:
 
     def check_wifi_timeouts(self) -> None:
         self._service.check_wifi_timeouts()
+
+    def get_boards_by_user(self, usuario_id: int) -> list[Board]:
+        return self._service.get_boards_by_user(usuario_id)
+
+    def unassign_board(self, board_id: str, usuario_id: int) -> None:
+        self._service.unassign_board(board_id, usuario_id)
+
+    def claim_board(self, board_id: str, usuario_id: int) -> Board:
+        return self._service.claim_board(board_id, usuario_id)
+
+    def admin_reassign_board(self, board_id: str, new_usuario_id: int | None) -> Board:
+        return self._service.admin_reassign_board(board_id, new_usuario_id)
+
+    def delete_board(self, board_id: str) -> None:
+        """Solo para admin."""
+        self._service.delete_board_permanently(board_id)

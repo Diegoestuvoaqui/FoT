@@ -51,7 +51,7 @@ class MainWindow:
         self._selected_board_id: str | None = None
         self._current_panel: ctk.CTkFrame | None = None
         self._notif_panel_visible = False
-        self._removing = False  # ← NUEVO: evita doble-click en eliminar
+        self._removing = False  # ← evita doble-click en eliminar
 
         # Sistema de notificaciones
         self._notif_mgr = NotificationManager(root)
@@ -117,11 +117,13 @@ class MainWindow:
             on_disconnect=self._on_disconnect_board,
             on_remove=self._on_remove_board,
             on_read_now=self._on_read_now,
-            on_identify=self._on_identify_board,  
+            on_identify=self._on_identify_board,
             on_scan_bluetooth=self._on_scan_bluetooth,
             on_scan_wifi=self._on_scan_wifi,
             on_firmware_update=self._on_firmware_update,
+            on_claim=self._on_claim_board,
             #on_register_manual=self._on_register_manual,
+            current_user=self._user,
         )
         self._panels["arduinos"] = self.arduino_panel
 
@@ -137,6 +139,7 @@ class MainWindow:
         self.admin_panel.set_delete_callback(self._on_admin_delete_user)
         self.admin_panel.set_toggle_active_callback(self._on_admin_toggle_active)
         self.admin_panel.set_reset_password_callback(self._on_admin_reset_password)
+        self.admin_panel.set_reassign_board_callback(self._on_admin_reassign_board)
         self._panels["admin"] = self.admin_panel
 
         # Settings Panel
@@ -163,6 +166,7 @@ class MainWindow:
         self._side_bar.grid()
         self._top_bar.grid()
         self._status_bar.grid()
+        self.arduino_panel.set_current_user(self._user)
 
         if self._user.is_admin():
             self._side_bar.add_nav_button("admin", "Admin", "Gestión de usuarios")
@@ -172,10 +176,8 @@ class MainWindow:
         self._board_ctrl.set_ui_callback(self._on_board_updated)
         self._event_ctrl.set_ui_callback(self._on_event_logged)
 
-        self._sensor_manager.set_callbacks(
-            on_reading=self._on_sensor_reading,
-            on_identify=self._on_sensor_identify
-        )
+        self._sensor_manager.add_reading_observer(self._on_sensor_reading)
+        self._sensor_manager.add_identify_observer(self._on_sensor_identify)
 
         self._current_panel = None
         self._navigate("dht11")
@@ -206,25 +208,125 @@ class MainWindow:
         self._current_panel = panel
         self._side_bar.set_active(section)
 
+
     def _load_initial_data(self) -> None:
-        dht11_boards = self._board_ctrl.get_boards_by_panel("dht11")
+        """Carga placas y eventos filtrados por rol de usuario."""
+        if self._user.is_admin():
+            # Admin ve todas las placas del sistema
+            dht11_boards = self._board_ctrl.get_boards_by_panel("dht11")
+            all_boards = self._board_ctrl.get_boards()
+        else:
+            # Usuario normal: sus placas + las que están sin asignar (para reclamar)
+            user_boards = self._board_ctrl.get_boards_by_user(self._user.id)
+            dht11_boards = [
+                b for b in user_boards
+                if self._board_ctrl.board_belongs_to_panel(b.id, "dht11")
+            ]
+            all_boards = self._board_ctrl.get_boards_visible_to_user(self._user.id)
+
         self.dht11_panel.set_boards(dht11_boards)
 
+        # Cargar historial de eventos (visible para todos)
         history = self._event_ctrl.load_history()
         for event in history:
             self.dht11_panel.add_event(event["text"], event["tipo"])
 
-        boards = self._board_ctrl.get_boards()
-        for board in boards:
+        # Actualizar panel de arduinos
+        for board in all_boards:
             self.arduino_panel.update_board(board)
 
-        self._top_bar.update_boards_count(len(boards))
+        self._top_bar.update_boards_count(len(all_boards))
         self._status_bar.update_usb_count(
-            sum(1 for b in boards if b.conn == "usb" and b.status == "Conectada")
+            sum(1 for b in all_boards if b.conn == "usb" and b.status == "Conectada")
         )
 
         if self._user and self._user.is_admin():
             self._refresh_admin_users()
+            self._refresh_admin_boards()
+
+
+    def _on_remove_board(self, board_id: str):
+        """Elimina o desasigna una placa según el rol del usuario."""
+        if self._removing:
+            return
+        self._removing = True
+
+        def _confirm_remove(confirmed: bool):
+            if not confirmed:
+                self._removing = False
+                return
+
+            board = self._board_ctrl.get_board(board_id)
+            if not board:
+                self._removing = False
+                return
+
+            # Guardar evento ANTES de modificar (FK constraint)
+            self._event_ctrl.append(
+                board_id=board_id,
+                descripcion=f"Placa removida por {self._user.username}",
+                tipo="registro"
+            )
+
+            if self._user.is_admin():
+                # Admin: borrado físico permanente del sistema
+                self._board_ctrl.delete_board(board_id)
+                self.arduino_panel.remove_board(board_id)
+                self._notif_mgr.notify(
+                    "Placa eliminada",
+                    f"\'{board_id}\' fue removida permanentemente del sistema",
+                    tipo="info"
+                )
+            else:
+                # Usuario normal: solo se desasigna (la placa queda libre)
+                if board.usuario_id != self._user.id:
+                    self._notif_mgr.notify(
+                        "Error",
+                        "No puedes modificar una placa que no te pertenece",
+                        tipo="error"
+                    )
+                    self._removing = False
+                    return
+
+                self._board_ctrl.unassign_board(board_id, self._user.id)
+                self.arduino_panel.remove_board(board_id)
+                self._notif_mgr.notify(
+                    "Placa desasignada",
+                    f"Dejaste de usar \'{board_id}\'. Otro usuario puede reclamarla.",
+                    tipo="info"
+                )
+
+            self._removing = False
+
+        if self._user.is_admin():
+            ConfirmDialog(
+                self._root,
+                title="Eliminar placa",
+                message=(
+                    f"¿Eliminar permanentemente la placa \'{board_id}\'?\n\n"
+                    "Esta acción la borra del sistema completamente. "
+                    "Ningún usuario podrá verla ni usarla."
+                ),
+                yes_text="Sí, eliminar",
+                yes_color="#EF4444",
+                yes_hover="#B91C1C",
+                on_result=_confirm_remove,
+            )
+        else:
+            ConfirmDialog(
+                self._root,
+                title="Desasignar placa",
+                message=(
+                    f"¿Dejar de usar la placa \'{board_id}\'?\n\n"
+                    "La placa quedará libre en el sistema y otro usuario podrá asignársela. "
+                    "No se borran los datos históricos."
+                ),
+                yes_text="Sí, desasignar",
+                yes_color="#F59E0B",
+                yes_hover="#D97706",
+                on_result=_confirm_remove,
+            )
+
 
     # --- Callbacks DHT11 Panel ---
     def _on_select_board(self, board_id: str | None):
@@ -293,6 +395,24 @@ class MainWindow:
     def _on_register_board(self, board_id: str):
         logger.info("Solicitud de registro para board: %s", board_id)
 
+    def _on_claim_board(self, board_id: str) -> None:
+        """Un usuario reclama una placa detectada sin dueño."""
+        try:
+            self._board_ctrl.claim_board(board_id, self._user.id)
+        except (PermissionError, ValueError) as e:
+            self._notif_mgr.notify("Error", str(e), tipo="error")
+            return
+        self._event_ctrl.append(
+            board_id=board_id,
+            descripcion=f"Placa reclamada por {self._user.username}",
+            tipo="registro"
+        )
+        self._notif_mgr.notify(
+            "Placa reclamada",
+            f"'{board_id}' ahora es tuya",
+            tipo="success"
+        )
+
     def _on_connect_board(self, board_id: str):
         ok, msg = self._board_ctrl.connect(board_id)
         if ok:
@@ -318,44 +438,11 @@ class MainWindow:
             tipo="warning"
         )
 
-    def _on_remove_board(self, board_id: str):
-        """Confirma antes de eliminar y actualiza la UI."""
-        if self._removing:
-            return  # ← evita doble diálogo
-        self._removing = True
 
-        def _confirm_remove(confirmed: bool):
-            if not confirmed:
-                self._removing = False
-                return
-
-            # ← FIX: guardar evento ANTES de eliminar la placa (FK constraint)
-            self._event_ctrl.append(
-                board_id=board_id,
-                descripcion=f"Placa eliminada: {board_id}",
-                tipo="registro"
-            )
-
-            self._board_ctrl.remove(board_id)
-            self.arduino_panel.remove_board(board_id)
-            self._notif_mgr.notify(
-                "Placa eliminada",
-                f"{board_id} fue removida del sistema",
-                tipo="info"
-            )
-            self._removing = False
-
-        ConfirmDialog(
-            self._root,
-            title="Eliminar placa",
-            message=f"¿Eliminar permanentemente la placa '{board_id}'?\n\n"
-                    "Esta acción no se puede deshacer.",
-            on_result=_confirm_remove,
-        )
 
     def _on_read_now(self, board_id: str):
         self._board_ctrl.read_now(board_id)
-    
+
     def _on_identify_board(self, board_id: str):
         self._board_ctrl.identify_now(board_id)
 
@@ -404,7 +491,7 @@ class MainWindow:
 
     def _on_board_updated(self, board: Board):
         self._root.after(0, lambda: self.arduino_panel.update_board(board))
-        if self._board_ctrl.board_belongs_to_panel(board.id, "dht11"):
+        if self._board_ctrl.board_belongs_to_panel(board.id, "dht11") and board.usuario_id == self._user.id:
             self._root.after(0, lambda: self.dht11_panel.update_board(board))
         # Actualizar contadores
         boards = self._board_ctrl.get_boards()
@@ -473,6 +560,26 @@ class MainWindow:
         ok, users = self._auth_ctrl.list_users(self._user)
         if ok:
             self.admin_panel.refresh_users(users, self._user.id)
+
+    def _on_admin_reassign_board(self, board_id: str, new_usuario_id: int | None) -> None:
+        """Admin fuerza dueño de una placa (o la libera con None)."""
+        try:
+            self._board_ctrl.admin_reassign_board(board_id, new_usuario_id)
+        except ValueError as e:
+            self._notif_mgr.notify("Error", str(e), tipo="error")
+            return
+        self._event_ctrl.append(
+            board_id=board_id,
+            descripcion=f"Placa reasignada por admin {self._user.username}",
+            tipo="registro"
+        )
+        self._notif_mgr.notify("Placa reasignada", board_id, tipo="success")
+        self._refresh_admin_boards()
+
+    def _refresh_admin_boards(self) -> None:
+        ok, users = self._auth_ctrl.list_users(self._user)
+        if ok:
+            self.admin_panel.refresh_boards(self._board_ctrl.get_boards(), users)
 
     def cleanup(self):
         self._status_bar.stop_clock()
@@ -592,7 +699,9 @@ class MainWindow:
             tipo="info"
         )
 
-        self._sensor_manager.set_callbacks(on_reading=None, on_identify=None)
+        self._sensor_manager.remove_reading_observer(self._on_sensor_reading)
+        self._sensor_manager.remove_identify_observer(self._on_sensor_identify)
+        self.arduino_panel.set_current_user(None)
         self.cleanup()
 
         if self._notif_panel_visible:
@@ -614,10 +723,10 @@ class MainWindow:
 
 
     def _start_wifi_checker(self):
-        """← NUEVO: heartbeat periódico para detectar WiFi caído."""
+        """Heartbeat periódico para detectar WiFi caído."""
         self._check_wifi()
         self._root.after(5000, self._start_wifi_checker)
 
     def _check_wifi(self):
-        """← NUEVO: verifica timeouts de WiFi."""
+        """Verifica timeouts de WiFi."""
         self._board_ctrl.check_wifi_timeouts()

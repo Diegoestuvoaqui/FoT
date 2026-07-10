@@ -24,7 +24,7 @@ class WiFiBridge:
                  mqtt_bus,
                  on_command_response: Optional[Callable[[dict], None]] = None,
                  on_disconnect: Optional[Callable[[], None]] = None,
-                 timeout: float = 30.0):
+                 timeout: float = 120.0):
         self._on_disconnect = on_disconnect
         self.board_id = board_id
         self._mqtt_bus = mqtt_bus

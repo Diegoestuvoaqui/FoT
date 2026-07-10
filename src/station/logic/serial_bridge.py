@@ -25,7 +25,7 @@ class SerialBridge:
                  on_reading: Optional[Callable[[dict], None]] = None,
                  on_command_response: Optional[Callable[[dict], None]] = None,
                  on_disconnect: Optional[Callable[[], None]] = None,
-                 timeout: float = 1.0):
+                 timeout: float = 60.0):
         self.port = port
         self.baud = baud
         self._on_reading = on_reading  # Callback para datos de sensores

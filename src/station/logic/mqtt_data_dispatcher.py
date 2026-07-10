@@ -36,7 +36,6 @@ class MQTTDataDispatcher:
         self._known_boards: set[str] = set()
 
     def on_event(self, topic: str, data: dict) -> None:
-        # Topic esperado: fot/<board_id>/sensores  o  fot/<board_id>/estado
         parts = topic.split("/")
         if len(parts) < 3 or parts[0] != "fot":
             return
@@ -44,26 +43,24 @@ class MQTTDataDispatcher:
         board_id = parts[1]
         msg_type = parts[2] if len(parts) > 2 else "unknown"
 
-        # Auto-descubrimiento: si es una placa nueva, notificar
+        # Auto-descubrimiento
         if board_id not in self._known_boards:
             self._known_boards.add(board_id)
             if self._on_new_board:
                 self._on_new_board(board_id, "wifi")
             logger.info("Nueva placa WiFi detectada vía MQTT: %s", board_id)
 
-        # Enrutar según tipo de mensaje
+        # ← NUEVO: marcar como visto SIEMPRE que llegue un mensaje de esta placa
+        self._mark_bridge_seen(board_id)
+
+        # Enrutar según tipo
         if msg_type == "sensores" and "data" in data:
-            # Lectura de sensor: guardar en DB, NO marcar como 'visto' el bridge
             if self._on_reading:
                 self._on_reading(board_id, data)
 
         elif msg_type == "estado":
-            # Mensaje de estado/conexión: marcar bridge como vivo y procesar identificación
-            self._mark_bridge_seen(board_id)
-
             if "sketch" in data and self._on_identify:
                 self._on_identify(board_id, data)
-            # También puede ser heartbeat, error, etc.
         else:
             logger.debug("Mensaje MQTT no manejado: %s → keys=%s", topic, list(data.keys()))
 

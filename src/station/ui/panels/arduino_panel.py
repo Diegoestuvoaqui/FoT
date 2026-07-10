@@ -22,6 +22,8 @@ class ArduinoPanel(ctk.CTkFrame):
             on_firmware_update=None,
             on_identify=None,
             #on_register_manual=None,
+            on_claim=None,
+            current_user=None,
             **kwargs
     ):
         super().__init__(master, **kwargs)
@@ -43,6 +45,8 @@ class ArduinoPanel(ctk.CTkFrame):
 
         self._boards: list[Board] = []
         self._selected_board_id: str | None = None
+        self._on_claim = on_claim
+        self._current_user = current_user
 
         self._build_left()
         self._build_right()
@@ -60,6 +64,7 @@ class ArduinoPanel(ctk.CTkFrame):
         self._board_list = BoardList(
             left,
             on_select=self._on_board_selected,
+            on_claim=self._on_claim,
         )
         self._board_list.grid(row=1, column=0, sticky="nsew", padx=6, pady=4)
 
@@ -178,10 +183,10 @@ class ArduinoPanel(ctk.CTkFrame):
         # === BOTONES DE ACCIÓN ===
         btn_frame = ctk.CTkFrame(right, fg_color="transparent")
         btn_frame.grid(row=row, column=0, columnspan=2, pady=8)
-
         self._btn_connect = ctk.CTkButton(
             btn_frame, text="Conectar",
             font=FONT_SMALL,
+            state="disabled",  # ← NUEVO
             command=self._on_connect_clicked
         )
         self._btn_connect.pack(side="left", padx=4)
@@ -190,6 +195,7 @@ class ArduinoPanel(ctk.CTkFrame):
             btn_frame, text="Desconectar",
             font=FONT_SMALL,
             fg_color="#EF4444", hover_color="#B91C1C",
+            state="disabled",  # ← NUEVO
             command=self._on_disconnect_clicked
         )
         self._btn_disconnect.pack(side="left", padx=4)
@@ -205,17 +211,10 @@ class ArduinoPanel(ctk.CTkFrame):
         self._btn_firmware = ctk.CTkButton(
             btn_frame, text="Cargar .hex",
             font=FONT_SMALL,
+            state="disabled",  # ← NUEVO
             command=self._on_firmware_clicked
         )
         self._btn_firmware.pack(side="left", padx=4)
-
-        self._btn_remove = ctk.CTkButton(
-            btn_frame, text="Eliminar",
-            font=FONT_SMALL,
-            fg_color="#6B7280", hover_color="#4B5563",
-            command=self._on_remove_clicked
-        )
-        self._btn_remove.pack(side="left", padx=4)
 
         row += 1
 
@@ -235,14 +234,29 @@ class ArduinoPanel(ctk.CTkFrame):
 
     # --- API pública ---
 
+    def set_current_user(self, user) -> None:  # ← NUEVO
+        self._current_user = user
+
     def set_boards(self, boards: list):
         self._boards = boards
         self._board_list.set_boards(boards)
 
     def update_board(self, board: Board):
+        # Mantener también la lista interna del panel (no solo la de BoardList),
+        # o la selección nunca encuentra la board y _update_detail no corre
+        # hasta el próximo evento -- causaba que "Desconectar" quedara
+        # habilitado por defecto en placas nunca detalladas.
+        found = False
+        for i, b in enumerate(self._boards):
+            if b.id == board.id:
+                self._boards[i] = board
+                found = True
+                break
+        if not found:
+            self._boards.append(board)
+
         self._board_list.update_board(board)
 
-        # Actualizar detalle si es la seleccionada
         if self._selected_board_id == board.id:
             self._update_detail(board)
 
@@ -310,16 +324,22 @@ class ArduinoPanel(ctk.CTkFrame):
 
         # Estados de botones
         is_connected = board.status == "Conectada"
-        is_registered = board.sketch_id is not None
+        is_claimed = board.usuario_id is not None
+        is_owner = self._current_user is not None and (
+            board.usuario_id == self._current_user.id or self._current_user.is_admin()
+        )  # ← NUEVO
 
         self._btn_connect.configure(
-            state="normal" if not is_connected else "disabled"
+            state="normal" if is_claimed and not is_connected else "disabled"
         )
         self._btn_disconnect.configure(
             state="normal" if is_connected else "disabled"
         )
         self._btn_read.configure(
             state="normal" if is_connected else "disabled"
+        )
+        self._btn_firmware.configure(  # ← NUEVO
+            state="normal" if is_connected and is_owner else "disabled"
         )
 
     def _clear_detail(self):
@@ -334,6 +354,7 @@ class ArduinoPanel(ctk.CTkFrame):
         self._btn_connect.configure(state="disabled")
         self._btn_disconnect.configure(state="disabled")
         self._btn_read.configure(state="disabled")
+        self._btn_firmware.configure(state="disabled")
 
     #def _on_register_manual_clicked(self):
     #    """← NUEVO: Abre diálogo de registro manual."""

@@ -27,6 +27,7 @@ class BoardList(ctk.CTkScrollableFrame):
             master,
             on_select: Optional[Callable[[str], None]] = None,
             on_context_menu: Optional[Callable[[str, str], None]] = None,
+            on_claim: Optional[Callable[[str], None]] = None,
             **kwargs
     ):
         kwargs.setdefault("label_text", "")
@@ -36,6 +37,7 @@ class BoardList(ctk.CTkScrollableFrame):
 
         self._on_select = on_select
         self._on_context_menu = on_context_menu
+        self._on_claim = on_claim
         self._selected_id: str | None = None
         self._boards: list[Board] = []
         self._row_frames: dict[str, ctk.CTkFrame] = {}
@@ -85,8 +87,8 @@ class BoardList(ctk.CTkScrollableFrame):
         name = board.sketch_name or board.id
         conn = getattr(board, "conn", "none")
         status = getattr(board, "status", "Desconocida")
+        unclaimed = board.usuario_id is None   # ← NUEVO
 
-        # Determinar color de estado
         is_connected = status == "Conectada"
         status_color = COLORS["accent"] if is_connected else "gray"
 
@@ -99,6 +101,8 @@ class BoardList(ctk.CTkScrollableFrame):
         frame.grid(row=index, column=0, sticky="ew", pady=3, padx=2)
         frame.grid_columnconfigure(0, weight=1)
         frame.grid_columnconfigure(1, minsize=40)
+        if unclaimed:
+            frame.grid_columnconfigure(2, minsize=90)   # ← NUEVO
 
         lbl_name = ctk.CTkLabel(
             frame,
@@ -108,38 +112,47 @@ class BoardList(ctk.CTkScrollableFrame):
         )
         lbl_name.grid(row=0, column=0, padx=(10, 4), pady=(6, 0), sticky="w")
 
-        # Info secundaria: fabricante + puerto
         factory_info = board.manufacturer or "Desconocido"
         if board.serial_number:
             factory_info += f" • S/N: {board.serial_number[:8]}..."
 
-        info_text = f"{status}  •  {factory_info}"
+        # ← NUEVO: distinguir visualmente "sin asignar" de "detectada/conectada con dueño"
+        display_status = "Sin asignar (detectada)" if unclaimed else status
+        #info_text = f"{display_status}  •  {factory_info}"
+        info_text = f"{display_status}"
         lbl_info = ctk.CTkLabel(
             frame,
             text=info_text,
             font=FONT_SMALL,
-            text_color=status_color,
+            text_color=COLORS["fault"] if unclaimed else status_color,
             anchor="w",
         )
         lbl_info.grid(row=1, column=0, padx=(10, 4), pady=(0, 6), sticky="w")
 
         dot_color = COLORS["accent"] if is_connected else COLORS["disconnected"]
         dot = ctk.CTkLabel(
-            frame,
-            text="●",
-            width=16,
-            font=("Roboto", 12),
-            text_color=dot_color,
+            frame, text="●", width=16, font=("Roboto", 12), text_color=dot_color,
         )
         dot.grid(row=0, column=1, rowspan=2, padx=(0, 10), sticky="e")
 
-        # Bind de click para selección
+        if unclaimed:   # ← NUEVO
+            btn_claim = ctk.CTkButton(
+                frame, text="Reclamar", font=FONT_SMALL, width=80, height=26,
+                fg_color=COLORS["accent"], hover_color="#16A34A",
+                command=lambda b=bid: self._handle_claim(b),
+            )
+            btn_claim.grid(row=0, column=2, rowspan=2, padx=(0, 10), sticky="e")
+
         for w in (frame, lbl_name, lbl_info, dot):
             w.bind("<Button-1>", lambda e, b=bid: self._handle_select(b))
 
         self._row_frames[bid] = frame
         self._row_labels[bid] = lbl_info
         self._row_dots[bid] = dot
+
+    def _handle_claim(self, board_id: str) -> None:   # ← NUEVO
+        if self._on_claim:
+            self._on_claim(board_id)
 
     def _handle_select(self, board_id: str) -> None:
         self._select_board(board_id)

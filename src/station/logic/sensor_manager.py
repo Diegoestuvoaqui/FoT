@@ -19,33 +19,71 @@ class SensorManager:
     """
     Administra múltiples conexiones a placas Arduino.
     Soporta USB, Bluetooth y WiFi simultáneamente.
+
+    Notifica lecturas, identificaciones y desconexiones mediante el
+    patrón Observer: múltiples suscriptores pueden registrarse sin
+    pisarse entre sí (a diferencia del antiguo esquema de un solo
+    callback por evento, que causaba que el último en registrarse
+    "ganara" y silenciara a los anteriores).
     """
 
-    def __init__(self,
-                 on_reading: Optional[Callable[[str, dict], None]] = None,
-                 on_identify: Optional[Callable[[str, dict], None]] = None,
-                 on_disconnect: Optional[Callable[[str], None]] = None,
-                 mqtt_bus=None):
+    def __init__(self, mqtt_bus=None):
         self._bridges: dict[str, SerialBridge | WiFiBridge] = {}
-        self._on_disconnect = on_disconnect
-        self._on_reading = on_reading
-        self._on_identify = on_identify
         self._mqtt_bus = mqtt_bus
 
+        # Listas de observers (patrón Observer, consistente con BoardService/EventService)
+        self._reading_observers: list[Callable[[str, dict], None]] = []
+        self._identify_observers: list[Callable[[str, dict], None]] = []
+        self._disconnect_observers: list[Callable[[str], None]] = []
+
     # ------------------------------------------------------------------
-    # Callbacks
+    # Observers
     # ------------------------------------------------------------------
 
-    def set_callbacks(self,
-                      on_reading: Optional[Callable[[str, dict], None]] = None,
-                      on_identify: Optional[Callable[[str, dict], None]] = None,
-                      on_disconnect: Optional[Callable[[str], None]] = None) -> None:
-        if on_reading is not None:
-            self._on_reading = on_reading
-        if on_identify is not None:
-            self._on_identify = on_identify
-        if on_disconnect is not None:
-            self._on_disconnect = on_disconnect
+    def add_reading_observer(self, callback: Callable[[str, dict], None]) -> None:
+        if callback not in self._reading_observers:
+            self._reading_observers.append(callback)
+
+    def remove_reading_observer(self, callback: Callable[[str, dict], None]) -> None:
+        if callback in self._reading_observers:
+            self._reading_observers.remove(callback)
+
+    def add_identify_observer(self, callback: Callable[[str, dict], None]) -> None:
+        if callback not in self._identify_observers:
+            self._identify_observers.append(callback)
+
+    def remove_identify_observer(self, callback: Callable[[str, dict], None]) -> None:
+        if callback in self._identify_observers:
+            self._identify_observers.remove(callback)
+
+    def add_disconnect_observer(self, callback: Callable[[str], None]) -> None:
+        if callback not in self._disconnect_observers:
+            self._disconnect_observers.append(callback)
+
+    def remove_disconnect_observer(self, callback: Callable[[str], None]) -> None:
+        if callback in self._disconnect_observers:
+            self._disconnect_observers.remove(callback)
+
+    def _notify_reading(self, board_id: str, data: dict) -> None:
+        for obs in self._reading_observers:
+            try:
+                obs(board_id, data)
+            except Exception as e:
+                logger.error("Error en observer de lectura: %s", e)
+
+    def _notify_identify(self, board_id: str, data: dict) -> None:
+        for obs in self._identify_observers:
+            try:
+                obs(board_id, data)
+            except Exception as e:
+                logger.error("Error en observer de identificación: %s", e)
+
+    def _notify_disconnect(self, board_id: str) -> None:
+        for obs in self._disconnect_observers:
+            try:
+                obs(board_id)
+            except Exception as e:
+                logger.error("Error en observer de desconexión: %s", e)
 
     # ------------------------------------------------------------------
     # Conexiones
@@ -57,22 +95,17 @@ class SensorManager:
             return False
 
         def on_read(data: dict):
-            if self._on_reading:
-                self._on_reading(board_id, data)
+            self._notify_reading(board_id, data)
 
         def on_resp(data: dict):
-            if "sketch" in data and self._on_identify:
-                self._on_identify(board_id, data)
+            if "sketch" in data:
+                self._notify_identify(board_id, data)
 
         def on_disconnect():
             self._bridges.pop(board_id, None)
-            if self._on_disconnect:
-                try:
-                    self._on_disconnect(board_id)
-                except Exception as e:
-                    logger.error("Error en on_disconnect callback: %s", e)
+            self._notify_disconnect(board_id)
 
-        bridge = SerialBridge(port=port, on_reading=on_read, on_command_response=on_resp,on_disconnect=on_disconnect)
+        bridge = SerialBridge(port=port, on_reading=on_read, on_command_response=on_resp, on_disconnect=on_disconnect)
         if bridge.connect():
             self._bridges[board_id] = bridge
             bridge.request_identify()
@@ -84,16 +117,11 @@ class SensorManager:
             return False
 
         def on_read(data: dict):
-            if self._on_reading:
-                self._on_reading(board_id, data)
+            self._notify_reading(board_id, data)
 
         def on_disconnect():
             self._bridges.pop(board_id, None)
-            if self._on_disconnect:
-                try:
-                    self._on_disconnect(board_id)
-                except Exception as e:
-                    logger.error("Error en on_disconnect callback: %s", e)
+            self._notify_disconnect(board_id)
 
         bridge = BluetoothBridge(port=port, on_reading=on_read, on_disconnect=on_disconnect)
         if bridge.connect():
@@ -118,12 +146,7 @@ class SensorManager:
 
         def on_disconnect():
             self._bridges.pop(board_id, None)
-            if self._on_disconnect:
-                try:
-                    self._on_disconnect(board_id)
-                except Exception as e:
-                    logger.error("Error en on_disconnect callback: %s", e)
-
+            self._notify_disconnect(board_id)
 
         # WiFiBridge ya no necesita callbacks de lectura — el dispatcher global los maneja
         bridge = WiFiBridge(
@@ -165,10 +188,9 @@ class SensorManager:
 
     def request_read(self, board_id: str) -> bool:
         return self.send_command(board_id, {"cmd": "read"})
-    
+
     def request_identify(self, board_id: str) -> bool:
         return self.send_command(board_id, {"cmd": "identify"})
-
 
     def set_interval(self, board_id: str, ms: int) -> bool:
         return self.send_command(board_id, {"cmd": "interval", "ms": ms})

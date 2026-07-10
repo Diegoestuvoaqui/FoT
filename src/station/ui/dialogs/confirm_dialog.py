@@ -1,8 +1,3 @@
-"""
-ui/dialogs/confirm_dialog.py
-Diálogo de confirmación personalizado usando CTkToplevel con tema oscuro.
-Reemplaza tkinter.messagebox.askyesno para mantener consistencia visual.
-"""
 from __future__ import annotations
 
 import customtkinter as ctk
@@ -21,6 +16,10 @@ class ConfirmDialog(ctk.CTkToplevel):
         parent,
         title: str = "Confirmar",
         message: str = "¿Estás seguro?",
+        yes_text: str = "Sí",
+        no_text: str = "No",
+        yes_color: str = "#EF4444",
+        yes_hover: str = "#B91C1C",
         on_result=None,
     ):
         super().__init__(parent)
@@ -29,7 +28,7 @@ class ConfirmDialog(ctk.CTkToplevel):
         self._on_result = on_result
         self._result = False
 
-        self._build(message)
+        self._build(message, yes_text, no_text, yes_color, yes_hover)
         self._center_window()
 
         # Modal
@@ -39,54 +38,39 @@ class ConfirmDialog(ctk.CTkToplevel):
 
         self.wait_window()
 
-    def _build(self, message: str):
+    def _build(self, message: str, yes_text: str, no_text: str,
+               yes_color: str, yes_hover: str):
         self.grid_columnconfigure(0, weight=1)
 
-        # Frame principal con padding
         frame = ctk.CTkFrame(self, fg_color="transparent")
         frame.grid(row=0, column=0, padx=24, pady=24, sticky="nsew")
         frame.grid_columnconfigure(0, weight=1)
 
-        # Icono de advertencia
         ctk.CTkLabel(
-            frame,
-            text="⚠️",
-            font=("Roboto", 28),
+            frame, text="⚠️", font=("Roboto", 28),
         ).grid(row=0, column=0, pady=(0, 8))
 
-        # Mensaje
         ctk.CTkLabel(
-            frame,
-            text=message,
-            font=FONT_NORMAL,
-            wraplength=320,
-            justify="center",
+            frame, text=message, font=FONT_NORMAL,
+            wraplength=320, justify="center",
         ).grid(row=1, column=0, pady=(0, 20))
 
-        # Botones
         btn_frame = ctk.CTkFrame(frame, fg_color="transparent")
         btn_frame.grid(row=2, column=0)
         btn_frame.grid_columnconfigure((0, 1), weight=1)
 
         ctk.CTkButton(
-            btn_frame,
-            text="No",
-            font=FONT_SMALL,
-            width=80,
-            height=32,
+            btn_frame, text=no_text, font=FONT_SMALL,
+            width=80, height=32,
             fg_color="transparent",
             hover_color=("gray80", "#2e2e2e"),
             command=self._on_no,
         ).grid(row=0, column=0, padx=6)
 
         ctk.CTkButton(
-            btn_frame,
-            text="Sí, eliminar",
-            font=FONT_SMALL,
-            width=120,
-            height=32,
-            fg_color="#EF4444",
-            hover_color="#B91C1C",
+            btn_frame, text=yes_text, font=FONT_SMALL,
+            width=120, height=32,
+            fg_color=yes_color, hover_color=yes_hover,
             command=self._on_yes,
         ).grid(row=0, column=1, padx=6)
 

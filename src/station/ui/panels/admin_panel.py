@@ -26,6 +26,7 @@ class AdminPanel(ctk.CTkFrame):
 
         self._build_header()
         self._build_user_list()
+        self._build_board_list()
 
     # ------------------------------------------------------------------
     # Layout
@@ -221,3 +222,67 @@ class AdminPanel(ctk.CTkFrame):
 
     def set_reset_password_callback(self, callback):
         self._on_reset_password_callback = callback
+
+
+    #boards
+    def _build_board_list(self):  # ← NUEVO, llamar en __init__ después de _build_user_list()
+        ctk.CTkLabel(
+            self, text="Gestión de placas", font=FONT_TITLE,
+        ).grid(row=2, column=0, sticky="w", padx=16, pady=(16, 8))
+
+        self._board_list_frame = ctk.CTkScrollableFrame(self, label_text="")
+        self._board_list_frame.grid(row=3, column=0, sticky="nsew", padx=16, pady=(0, 16))
+        self._board_list_frame.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(3, weight=1)
+
+        self._board_rows: list[ctk.CTkFrame] = []
+        self._board_owner_vars: dict[str, ctk.StringVar] = {}
+
+    def refresh_boards(self, boards: list, users: list[dict]) -> None:  # ← NUEVO
+        for row in self._board_rows:
+            row.destroy()
+        self._board_rows.clear()
+        self._board_owner_vars.clear()
+
+        username_by_id = {u["id"]: u["username"] for u in users}
+        options = ["Sin asignar"] + [u["username"] for u in users]
+
+        if not boards:
+            ctk.CTkLabel(
+                self._board_list_frame, text="No hay placas registradas",
+                font=FONT_NORMAL, text_color=("gray50", "gray70"),
+            ).grid(row=0, column=0, pady=20)
+            return
+
+        for i, board in enumerate(boards):
+            row = ctk.CTkFrame(self._board_list_frame, corner_radius=8, border_width=1,
+                               border_color=COLORS["border"])
+            row.grid(row=i, column=0, sticky="ew", pady=3, padx=2)
+            row.grid_columnconfigure(0, weight=1)
+
+            ctk.CTkLabel(row, text=board.id, font=FONT_NORMAL, anchor="w").grid(
+                row=0, column=0, padx=10, pady=8, sticky="w")
+
+            current_owner = username_by_id.get(board.usuario_id, "Sin asignar")
+            var = ctk.StringVar(value=current_owner)
+            self._board_owner_vars[board.id] = var
+
+            combo = ctk.CTkComboBox(row, values=options, variable=var, font=FONT_SMALL, width=160)
+            combo.grid(row=0, column=1, padx=8)
+
+            btn_apply = ctk.CTkButton(
+                row, text="Aplicar", font=FONT_SMALL, width=70, height=28,
+                command=lambda bid=board.id, v=var, uname_map={u["username"]: u["id"] for u in users}:
+                self._on_apply_reassign(bid, v.get(), uname_map),
+            )
+            btn_apply.grid(row=0, column=2, padx=(4, 10))
+
+            self._board_rows.append(row)
+
+    def _on_apply_reassign(self, board_id: str, selected_username: str, uname_map: dict) -> None:  # ← NUEVO
+        new_usuario_id = None if selected_username == "Sin asignar" else uname_map.get(selected_username)
+        if hasattr(self, "_on_reassign_board_callback"):
+            self._on_reassign_board_callback(board_id, new_usuario_id)
+
+    def set_reassign_board_callback(self, callback) -> None:  # ← NUEVO
+        self._on_reassign_board_callback = callback
