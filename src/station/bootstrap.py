@@ -109,37 +109,55 @@ def bootstrap() -> tuple[bool, str]:
     Verifica y configura el entorno en la primera ejecución.
     Retorna (ok: bool, mensaje: str).
     ok=False significa que falta un requisito que el usuario debe instalar.
-    """
-    if not _mosquitto_installed():
-        return False, (
-            "Mosquitto no está instalado.\n"
-            "Instálalo con:\n\n"
-            "  sudo pacman -S mosquitto      # Arch\n"
-            "  sudo apt install mosquitto    # Debian/Ubuntu"
-        )
 
+    IMPORTANTE:
+    - avrdude es OBLIGATORIO (se usa para flashear firmware desde la UI).
+    - Mosquitto es OPCIONAL. Si no está, la app arranca igual pero sin
+      soporte para placas WiFi/MQTT (solo USB y Bluetooth funcionarán).
+    """
+
+    # ─────────────────────────────────────────────────────────────
+    # 1) REQUISITO OBLIGATORIO: avrdude
+    # ─────────────────────────────────────────────────────────────
     if not _avrdude_installed():
         return False, (
             "avrdude no está instalado.\n"
+            "Es necesario para cargar firmware a las placas.\n\n"
             "Instálalo con:\n\n"
-            "  sudo pacman -S avrdude        # Arch\n"
-            "  sudo apt install avrdude      # Debian/Ubuntu"
+            "  sudo apt install avrdude      # Debian/Ubuntu\n"
+            "  sudo pacman -S avrdude        # Arch"
         )
-    
+
+    # ─────────────────────────────────────────────────────────────
+    # 2) OPCIONAL: Mosquitto (solo si está instalado)
+    # ─────────────────────────────────────────────────────────────
+    if not _mosquitto_installed():
+        print(
+            "\n[FoT] Aviso: Mosquitto no está instalado.\n"
+            "      La app arrancará SIN soporte MQTT (solo USB/Bluetooth).\n"
+            "      Para habilitar WiFi/MQTT, instálalo con:\n\n"
+            "        sudo apt install mosquitto    # Debian/Ubuntu\n"
+            "        sudo pacman -S mosquitto      # Arch\n"
+        )
+        return True, "OK (sin MQTT)"
+
+    # Mosquitto está instalado → configurar la primera vez
     if not _is_configured():
         _configure_mosquitto()
         _create_systemd_service()
         _write_sentinel()
 
-    # En cada arranque — asegurar que mosquitto esté corriendo
-    # (puede haberse detenido tras un reinicio del sistema)
+    # Asegurar que esté corriendo (puede haberse detenido tras un reinicio)
     if not _mosquitto_running():
         _start_mosquitto()
 
+    # Si no arrancó, avisar pero NO bloquear la app
     if not _mosquitto_running():
-        return False, (
-            "No se pudo arrancar Mosquitto.\n"
-            f"Revisa el log en:\n  {MOSQ_LOG}"
+        print(
+            "\n[FoT] Aviso: no se pudo arrancar Mosquitto.\n"
+            f"      Revisa el log en: {MOSQ_LOG}\n"
+            "      La app arrancará sin soporte MQTT.\n"
         )
+        return True, "OK (MQTT no disponible)"
 
     return True, "OK"

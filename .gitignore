@@ -1,12 +1,5 @@
+# === PlatformIO ===
 .pio
-.qtc_clangd
-.idea
-.ideabackup
-.venv
-lib
-include
-service
-Makefile
 platformio.cflags
 platformio.config
 platformio.creator
@@ -14,14 +7,44 @@ platformio.cxxflags
 platformio.files
 platformio.includes
 platformio.ini
-pyproject.toml
+
+# === IDEs ===
+.idea
+.ideabackup
+.qtc_clangd
+.vscode/
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+env/
+
+# === Dependencias / Lock files ===
 uv.lock
+pyproject.toml
+
+# === Docs / misc ===
+doc
 deepseek.txt
 test_output.log
-*.toml
-*.toml
-platformio.includes
-doc
+
+# === Bases de datos locales ===
+*.db
+*.sqlite
+*.sqlite3
+
+# === Logs ===
+*.log
 src/station/fot.log
 src/station/iot.log
-src/station/iot.log
+
+# === Sistema ===
+.DS_Store
+Thumbs.db
