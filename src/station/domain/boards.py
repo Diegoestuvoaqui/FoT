@@ -2,14 +2,13 @@
 import hashlib
 
 # Ranking de estados de CONEXIÓN (no de propiedad). Más alto = más "avanzado".
-# Se usa para que un evento de detección física nunca degrade un estado
-# ya más avanzado (ej: no puede pisar "Conectada" con "Detectada").
 _CONN_STATE_RANK = {
     "Desconectada": 0,
     "Error de conexión": 0,
     "Detectada": 1,
     "Conectada": 2,
 }
+
 
 class Board:
     def __init__(self,
@@ -23,14 +22,21 @@ class Board:
                  conn_module: str = "",
                  port: str = "",
                  last_seen: str | None = None,
-                 # Nuevos campos de fábrica
                  hwid: str | None = None,
                  vid: int | None = None,
                  pid: int | None = None,
                  serial_number: str | None = None,
                  manufacturer: str | None = None,
                  product: str | None = None,
-                 location: str | None = None):
+                 location: str | None = None,
+                 hw_model: str | None = None,
+                 mac: str | None = None,
+                 ip: str | None = None,
+                 fw_version: str | None = None,
+                 rssi: int | None = None,
+                 uptime_s: int | None = None,
+                 power_mode: str | None = None,
+                 interval_ms: int | None = None):
         self.id = board_id
         self.conn = conn
         self.status = status
@@ -51,11 +57,20 @@ class Board:
         self.product = product
         self.location = location
 
+        # Fase 4: campos de nodo WiFi (verdad viva la gestiona BoardService)
+        self.hw_model = hw_model
+        self.mac = mac
+        self.ip = ip
+        self.fw_version = fw_version
+        self.rssi = rssi
+        self.uptime_s = uptime_s
+        self.power_mode = power_mode
+        self.interval_ms = interval_ms
+
     def is_claimed(self) -> bool:
         return self.usuario_id is not None
 
     def get_vendor_name(self) -> str:
-        """Retorna nombre legible del vendor basado en VID."""
         vendors = {
             0x0403: "FTDI",
             0x1A86: "WCH (CH340/CH341)",
@@ -73,10 +88,7 @@ class Board:
                 f"usuario_id={self.usuario_id!r}, sn={self.serial_number!r})")
 
     def on_physical_detected(self) -> bool:
-        """
-        Transición ante detección física USB/BT/WiFi.
-        NUNCA toca usuario_id. Retorna True si el estado cambió.
-        """
+        """Transición ante detección física USB/BT/WiFi. No toca usuario_id."""
         if self.usuario_id is None:
             changed = self.status != "Sin asignar"
             self.status = "Sin asignar"
@@ -89,44 +101,42 @@ class Board:
         return False
 
     def on_physical_lost(self) -> bool:
-        """Transición ante pérdida de presencia física. Retorna True si cambió."""
+        """Transición ante pérdida de presencia física."""
         if self.status in ("Conectada", "Detectada", "Error de conexión"):
             self.status = "Desconectada"
             return True
         return False
 
+    def mark_alive(self) -> bool:
+        """Heartbeat recibido: pasa a Conectada si no lo estaba.
+        Devuelve True si el estado cambió (para saber si persistir/notificar)."""
+        if self.status == "Conectada":
+            return False
+        self.status = "Conectada"
+        return True
+
     def claim(self, usuario_id: int) -> None:
-        """Reclama una placa sin dueño. Falla si ya tiene uno."""
         if self.usuario_id is not None:
             raise PermissionError("La placa ya tiene dueño")
         self.usuario_id = usuario_id
         self.status = "Detectada"
 
     def release(self) -> None:
-        """Libera la placa. Queda disponible para que cualquiera la reclame."""
         self.usuario_id = None
         self.status = "Sin asignar"
 
 
-
 def resolve_board_identity(port_data: dict) -> str:
-        """
-        Resuelve un identificador estable y determinista para una placa física.
+    """ID estable y determinista para una placa física USB/BT."""
+    serial = (port_data.get("serial_number") or "").strip()
+    if serial:
+        return f"sn:{serial}"
 
-        Prioridad:
-        1. serial_number del chip, si existe.
-        2. Hash corto y determinista de vid+pid+manufacturer+product.
-        El path del puerto (/dev/ttyUSB0) NUNCA es identidad, solo dato de conexión.
-        """
-        serial = (port_data.get("serial_number") or "").strip()
-        if serial:
-            return f"sn:{serial}"
+    vid = port_data.get("vid") or 0
+    pid = port_data.get("pid") or 0
+    manufacturer = (port_data.get("manufacturer") or "").strip().lower()
+    product = (port_data.get("product") or "").strip().lower()
 
-        vid = port_data.get("vid") or 0
-        pid = port_data.get("pid") or 0
-        manufacturer = (port_data.get("manufacturer") or "").strip().lower()
-        product = (port_data.get("product") or "").strip().lower()
-
-        raw = f"{vid:04x}:{pid:04x}:{manufacturer}:{product}"
-        digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
-        return f"hw:{digest}"
+    raw = f"{vid:04x}:{pid:04x}:{manufacturer}:{product}"
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
+    return f"hw:{digest}"

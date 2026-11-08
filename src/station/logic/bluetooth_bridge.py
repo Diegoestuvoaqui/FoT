@@ -1,11 +1,9 @@
 # src/station/logic/bluetooth_bridge.py
-"""
-Bridge para Bluetooth (HC-05/06) usando pyserial con RFCOMM.
-En Linux, los dispositivos BT aparecen como /dev/rfcomm0, /dev/rfcomm1, etc.
-"""
+"""Bridge para HC-05/06 vía RFCOMM (pyserial sobre /dev/rfcommN)."""
 from __future__ import annotations
 
 import logging
+import time
 
 from logic.serial_bridge import SerialBridge
 
@@ -13,14 +11,11 @@ logger = logging.getLogger(__name__)
 
 
 class BluetoothBridge(SerialBridge):
-    """
-    Extensión de SerialBridge para Bluetooth.
-    El HC-05/06 se comporta como un puerto serial estándar una vez emparejado.
-    """
+    """SerialBridge adaptado a las particularidades del HC-05/06."""
 
     def __init__(self,
                  port: str = "/dev/rfcomm0",
-                 baud: int = 9600,  # HC-05 default
+                 baud: int = 9600,
                  **kwargs):
         super().__init__(port=port, baud=baud, **kwargs)
         logger.info("BluetoothBridge creado para %s", port)
@@ -28,7 +23,6 @@ class BluetoothBridge(SerialBridge):
     def connect(self) -> bool:
         ok = super().connect()
         if ok:
-            # El HC-05 necesita un momento para estabilizar
-            import time
+            # El HC-05 necesita un momento extra tras abrir el puerto.
             time.sleep(0.5)
         return ok

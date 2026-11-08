@@ -12,6 +12,6 @@ bool IdentifyCommand::execute(SensorSketch& ctx) {
 
     char buf[128];
     serializeJson(doc, buf, sizeof(buf));
-    ctx.send(buf);
+    ctx.sendStatus(buf);
     return true;
 }

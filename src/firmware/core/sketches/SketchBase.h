@@ -31,6 +31,10 @@ public:
     void send(const char* data) {
         if (_comm) _comm->send(data);
     }
+
+    void sendStatus(const char* data) {
+        if (_comm) _comm->sendStatus(data);
+    }
 };
 
 #endif

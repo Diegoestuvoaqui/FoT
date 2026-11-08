@@ -5,7 +5,6 @@ from typing import Callable, Optional
 from data.database import Database
 from domain.boards import Board
 from logic.sensor_manager import SensorManager
-from data.database import Database
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +22,15 @@ class BoardService:
         self._sketch_panel_map: dict[str, str | None] = {}
         self._load_sketch_catalog()
 
-    # ------------------------------------------------------------------
+    # ==================================================================
     # Registro
-    # ------------------------------------------------------------------
-
+    # ==================================================================
     def register_board(self,
                        board_id: str,
                        port: str,
                        conn_type: str = "usb",
                        factory_data: Optional[dict] = None) -> Board:
-        """Registra o actualiza la presencia física de una placa. NUNCA asigna dueño."""
+        """Registra o actualiza la presencia física. NUNCA asigna dueño."""
         board = self._boards.get(board_id)
         if board:
             board.port = port
@@ -63,6 +61,15 @@ class BoardService:
                 manufacturer=factory_data.get("manufacturer") if factory_data else None,
                 product=factory_data.get("product") if factory_data else None,
                 location=factory_data.get("location") if factory_data else None,
+                # Nuevos campos Fase 4
+                hw_model=existing.get("hw_model") if existing else None,
+                mac=existing.get("mac") if existing else None,
+                ip=existing.get("ip") if existing else None,
+                fw_version=existing.get("fw_version") if existing else None,
+                rssi=existing.get("rssi") if existing else None,
+                uptime_s=existing.get("uptime_s") if existing else None,
+                power_mode=existing.get("power_mode") if existing else None,
+                interval_ms=existing.get("interval_ms") if existing else None,
             )
             board.on_physical_detected()
             self._boards[board_id] = board
@@ -71,19 +78,25 @@ class BoardService:
         self._notify_change(board)
         return board
 
-    def register_bluetooth_board(self, board_id: str, port: str, usuario_id: Optional[int] = None) -> Board:
+    def register_bluetooth_board(self, board_id: str, port: str,
+                                 usuario_id: Optional[int] = None) -> Board:
         return self.register_board(board_id, port, "bluetooth", usuario_id)
 
-    def register_wifi_board(self, board_id: str, ip: str, usuario_id: Optional[int] = None) -> Board:
-        return self.register_board(board_id, ip, "wifi", usuario_id)
+    def register_wifi_board(self, board_id: str, ip: str = "",
+                            usuario_id: Optional[int] = None) -> Board:
+        board = self.register_board(board_id, port="", conn_type="wifi",
+                                    factory_data=None)
+        if ip and board.ip != ip:
+            board.ip = ip
+            self._persist_board(board)
+        return board
 
     def get_boards_by_user(self, usuario_id: int) -> list[Board]:
         return [b for b in self._boards.values() if b.usuario_id == usuario_id]
 
-    # ------------------------------------------------------------------
+    # ==================================================================
     # Conexión
-    # ------------------------------------------------------------------
-
+    # ==================================================================
     def connect_board(self, board_id: str) -> tuple[bool, str]:
         board = self._boards.get(board_id)
         if not board:
@@ -98,12 +111,13 @@ class BoardService:
                 return False, "Placa sin puerto asignado"
             ok = self._sensor_mgr.connect_bluetooth(board.port, board_id)
         elif board.conn == "wifi":
-            ok = self._sensor_mgr.connect_wifi(board_id, board.port or "localhost")
+            ok = self._sensor_mgr.ensure_wifi_bridge(board_id)
         else:
             return False, f"Tipo de conexión desconocido: {board.conn}"
 
         if ok:
-            board.status = "Conectada"
+            # WiFi: "Detectada" hasta el primer heartbeat; USB/BT: "Conectada".
+            board.status = "Detectada" if board.conn == "wifi" else "Conectada"
             board.last_seen = self._now()
             self._persist_board(board)
             self._notify_change(board)
@@ -123,8 +137,78 @@ class BoardService:
         self._persist_board(board)
         self._notify_change(board)
 
+    # ==================================================================
+    # Callbacks del pipeline de ingesta (llamados desde main.py)
+    # ==================================================================
+    def on_board_reading(self, board_id: str) -> None:
+        """Heartbeat de datos: pone la placa online (verdad viva)."""
+        board = self._boards.get(board_id)
+        if board is None:
+            return
+        board.last_seen = self._now()
+        if board.mark_alive():
+            self._persist_board(board)
+            self._notify_change(board)
+
+    def on_board_state(self, board_id: str, data: dict) -> None:
+        """Mensaje 'estado': metadata + LWT online/offline."""
+        board = self._boards.get(board_id)
+        if board is None:
+            return
+
+        changed = False
+        for attr in ("hw_model", "mac", "ip", "fw_version", "power_mode"):
+            val = data.get(attr)
+            if val is not None and getattr(board, attr) != val:
+                setattr(board, attr, val)
+                changed = True
+        for attr in ("rssi", "uptime_s", "interval_ms"):
+            val = data.get(attr)
+            if val is not None and getattr(board, attr) != val:
+                setattr(board, attr, val)
+                changed = True
+
+        status = data.get("status")
+        if status == "offline":
+            if board.on_physical_lost():
+                changed = True
+        elif status == "online" or data.get("boot"):
+            if board.mark_alive():
+                changed = True
+
+        board.last_seen = self._now()
+        self._persist_board(board)
+        if changed:
+            self._notify_change(board)
+
+    def on_sensor_identify(self, board_id: str, data: dict) -> None:
+        board = self._boards.get(board_id)
+        if not board:
+            return
+        board.sketch_id = data.get("sketch") or board.sketch_id
+        board.sketch_name = data.get("name") or board.sketch_name
+        board.sketch_version = data.get("version") or board.sketch_version
+        if data.get("hw"):
+            board.hw_model = data["hw"]
+        if data.get("mac"):
+            board.mac = data["mac"]
+        if data.get("ip"):
+            board.ip = data["ip"]
+        board.mark_alive()
+        self._persist_board(board)
+
+        if board.sketch_id and board.sketch_id not in self._sketch_panel_map:
+            self._db.upsert_sketch(board.sketch_id, board.sketch_name or "")
+            self._sketch_panel_map[board.sketch_id] = None
+            logger.info(
+                "Sketch nuevo registrado en catálogo sin panel: %s", board.sketch_id)
+
+        self._notify_change(board)
+
+    # ==================================================================
+    # Eliminación / asignación
+    # ==================================================================
     def remove_board(self, board_id: str) -> None:
-        """Elimina una placa del sistema (DB + memoria)."""
         self._boards.pop(board_id, None)
         self._sensor_mgr.disconnect(board_id)
         try:
@@ -134,20 +218,17 @@ class BoardService:
             logger.error("Error eliminando placa %s de DB: %s", board_id, e)
 
     def unassign_board(self, board_id: str, usuario_id: int) -> None:
-        """Usuario deja de usar una placa. La placa queda libre (usuario_id=NULL)."""
         board = self._boards.get(board_id)
         if not board:
             return
         if board.usuario_id != usuario_id:
             raise PermissionError("No es tu placa")
-
         board.usuario_id = None
         board.status = "Sin asignar"
         self._persist_board(board)
         self._notify_change(board)
 
     def claim_board(self, board_id: str, usuario_id: int) -> Board:
-        """Un usuario reclama una placa detectada sin dueño."""
         board = self._boards.get(board_id)
         if not board:
             raise ValueError("Placa no encontrada")
@@ -156,8 +237,8 @@ class BoardService:
         self._notify_change(board)
         return board
 
-    def admin_reassign_board(self, board_id: str, new_usuario_id: Optional[int]) -> Board:
-        """Solo admin: fuerza dueño (o lo libera con None) sin restricción de propiedad."""
+    def admin_reassign_board(self, board_id: str,
+                             new_usuario_id: Optional[int]) -> Board:
         board = self._boards.get(board_id)
         if not board:
             raise ValueError("Placa no encontrada")
@@ -172,7 +253,6 @@ class BoardService:
         return board
 
     def delete_board_permanently(self, board_id: str) -> None:
-        """Solo admin: borra físicamente del sistema."""
         self._boards.pop(board_id, None)
         self._sensor_mgr.disconnect(board_id)
         try:
@@ -180,11 +260,11 @@ class BoardService:
         except Exception as e:
             logger.error("Error eliminando placa %s: %s", board_id, e)
 
-    # ------------------------------------------------------------------
-    # Gestión de estado físico
-    # ------------------------------------------------------------------
-
-    def mark_board_disconnected(self, board_id: str, reason: str = "Puerto no disponible") -> None:
+    # ==================================================================
+    # Estado físico
+    # ==================================================================
+    def mark_board_disconnected(self, board_id: str,
+                                reason: str = "Puerto no disponible") -> None:
         board = self._boards.get(board_id)
         if not board:
             return
@@ -194,7 +274,8 @@ class BoardService:
             self._persist_board(board)
             self._notify_change(board)
 
-    def update_board_from_scanner(self, board_id: str, port_data: dict, is_connected: bool) -> None:
+    def update_board_from_scanner(self, board_id: str, port_data: dict,
+                                  is_connected: bool) -> None:
         board = self._boards.get(board_id)
         if board:
             if is_connected:
@@ -206,11 +287,10 @@ class BoardService:
                     board.manufacturer = port_data.get("manufacturer")
                     board.product = port_data.get("product")
                     board.location = port_data.get("location")
-
-                board.last_seen = self._now()  # ← NUEVO: siempre, hubo o no cambio de estado
+                board.last_seen = self._now()
                 changed = board.on_physical_detected()
-                self._persist_board(board)  # ← CAMBIO: persiste siempre (guarda last_seen)
-                if changed:  # ← CAMBIO: notifica solo si el estado cambió
+                self._persist_board(board)
+                if changed:
                     self._notify_change(board)
             else:
                 self.mark_board_disconnected(board_id, "Puerto físico desconectado")
@@ -220,12 +300,12 @@ class BoardService:
                     board_id=board_id,
                     port=port_data["device"],
                     conn_type="usb",
-                    factory_data=port_data
+                    factory_data=port_data,
                 )
-    # ------------------------------------------------------------------
-    # Consultas
-    # ------------------------------------------------------------------
 
+    # ==================================================================
+    # Consultas
+    # ==================================================================
     def get_board(self, board_id: str) -> Optional[Board]:
         return self._boards.get(board_id)
 
@@ -236,7 +316,6 @@ class BoardService:
         return [b for b in self._boards.values() if b.sketch_id == sketch_id]
 
     def get_boards_by_panel(self, panel_key: str) -> list[Board]:
-        """Retorna placas cuyo sketch_id está asociado a panel_key en el catálogo."""
         return [
             b for b in self._boards.values()
             if b.sketch_id and self._sketch_panel_map.get(b.sketch_id) == panel_key
@@ -251,10 +330,6 @@ class BoardService:
     def is_connected(self, board_id: str) -> bool:
         return self._sensor_mgr.is_connected(board_id)
 
-    # ------------------------------------------------------------------
-    # Comandos
-    # ------------------------------------------------------------------
-
     def request_read(self, board_id: str) -> bool:
         return self._sensor_mgr.request_read(board_id)
 
@@ -266,42 +341,17 @@ class BoardService:
         return self._db.get_readings(board_id, sensor_type, limit, start, end)
 
     def get_boards_visible_to_user(self, usuario_id: int) -> list[Board]:
-        """Placas propias + placas sin asignar (candidatas a reclamar)."""
         return [
             b for b in self._boards.values()
             if b.usuario_id == usuario_id or b.usuario_id is None
         ]
 
-
     def set_interval(self, board_id: str, ms: int) -> bool:
         return self._sensor_mgr.set_interval(board_id, ms)
 
-    # ------------------------------------------------------------------
-    # Callbacks del sensor
-    # ------------------------------------------------------------------
-
-    def on_sensor_identify(self, board_id: str, data: dict) -> None:
-        board = self._boards.get(board_id)
-        if not board:
-            return
-        board.sketch_id = data.get("sketch")
-        board.sketch_name = data.get("name")
-        board.sketch_version = data.get("version")
-        self._persist_board(board)
-
-        # Registrar el sketch en el catálogo si es nuevo
-        if board.sketch_id and board.sketch_id not in self._sketch_panel_map:
-            self._db.upsert_sketch(board.sketch_id, board.sketch_name or "")
-            self._sketch_panel_map[board.sketch_id] = None
-            logger.info("Sketch nuevo registrado en catálogo sin panel asignado: %s", board.sketch_id)
-
-
-        self._notify_change(board)
-
-    # ------------------------------------------------------------------
+    # ==================================================================
     # Persistencia
-    # ------------------------------------------------------------------
-
+    # ==================================================================
     def _persist_board(self, board: Board) -> None:
         try:
             self._db.save_board({
@@ -321,6 +371,15 @@ class BoardService:
                 "manufacturer": board.manufacturer,
                 "product": board.product,
                 "location": board.location,
+                "hw_model": board.hw_model,
+                "mac": board.mac,
+                "ip": board.ip,
+                "fw_version": board.fw_version,
+                "rssi": board.rssi,
+                "uptime_s": board.uptime_s,
+                "power_mode": board.power_mode,
+                "interval_ms": board.interval_ms,
+                "approved": 0,
             })
         except Exception as e:
             logger.error("Error persistiendo board %s: %s", board.id, e)
@@ -331,13 +390,12 @@ class BoardService:
             board = Board(
                 board_id=row["id"],
                 conn=row.get("conn", "usb"),
-                #status=row.get("status", "Desconocida"),
-                status="Desconectada",  # siempre empezar desconectada
+                status="Desconectada",  # verdad viva: arranca offline
                 usuario_id=row.get("usuario_id"),
                 sketch_id=row.get("sketch_id"),
                 sketch_name=row.get("sketch_name"),
                 sketch_version=row.get("sketch_version"),
-                port=row.get("port", ""),
+                port=row.get("port") or "",
                 last_seen=row.get("last_seen"),
                 hwid=row.get("hwid"),
                 vid=row.get("vid"),
@@ -346,40 +404,42 @@ class BoardService:
                 manufacturer=row.get("manufacturer"),
                 product=row.get("product"),
                 location=row.get("location"),
+                hw_model=row.get("hw_model"),
+                mac=row.get("mac"),
+                ip=row.get("ip"),
+                fw_version=row.get("fw_version"),
+                rssi=row.get("rssi"),
+                uptime_s=row.get("uptime_s"),
+                power_mode=row.get("power_mode"),
+                interval_ms=row.get("interval_ms"),
             )
             self._boards[board.id] = board
 
     def _load_sketch_catalog(self) -> None:
-        """Carga el catálogo de sketches (sketch_id -> panel_key) desde la DB."""
         try:
             sketches = self._db.get_all_sketches()
-            self._sketch_panel_map = {s["sketch_id"]: s.get("panel_key") for s in sketches}
+            self._sketch_panel_map = {
+                s["sketch_id"]: s.get("panel_key") for s in sketches
+            }
         except Exception as e:
             logger.error("Error cargando catálogo de sketches: %s", e)
             self._sketch_panel_map = {}
 
-
-
-    # ------------------------------------------------------------------
+    # ==================================================================
     # Helpers
-    # ------------------------------------------------------------------
-
+    # ==================================================================
     @staticmethod
     def _now() -> str:
         from datetime import datetime
         return datetime.now().isoformat()
 
-    # ------------------------------------------------------------------
-    # Observadores (lista, como EventService)
-    # ------------------------------------------------------------------
-
+    # ==================================================================
+    # Observers
+    # ==================================================================
     def add_observer(self, callback: Callable[[Board], None]) -> None:
         if callback not in self._observers:
             self._observers.append(callback)
-        # Replay: el nuevo observador recibe el estado actual de todas las
-        # placas ya conocidas, no solo los cambios que ocurran de ahora en
-        # adelante. Evita que placas detectadas antes de que la UI exista
-        # queden "invisibles" para un observador que se suscribe tarde.
+        # Replay del estado actual para no perder placas ya detectadas.
         for board in self._boards.values():
             try:
                 callback(board)
@@ -398,11 +458,9 @@ class BoardService:
                 logger.error("Error en observer: %s", e)
 
     def set_disconnect_callback(self, callback: Callable[[str], None]) -> None:
-        """← NUEVO: Conecta el callback de desconexión física al SensorManager."""
         self._sensor_mgr.add_disconnect_observer(callback)
 
     def check_wifi_timeouts(self) -> None:
-        """← NUEVO: Delega al SensorManager."""
         self._sensor_mgr.check_wifi_timeouts()
 
     def stop(self) -> None:

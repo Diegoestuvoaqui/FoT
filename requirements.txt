@@ -6,3 +6,5 @@ pillow==10.4.0
 zeroconf==0.131.0
 matplotlib==3.9.2
 platformio==6.1.16
+amqtt==0.12.1
+esptool==5.1.0

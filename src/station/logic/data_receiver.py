@@ -1,5 +1,9 @@
 # logic/data_receiver.py
+# Fase 3: guarda con save_reading_batch (una transacción por mensaje,
+# sin raw_data duplicado). La validación completa llega en la Fase 4.
 import logging
+import math
+import time
 
 from data.database import Database
 
@@ -12,25 +16,34 @@ class DataReceiver:
 
     def on_reading(self, board_id: str, data: dict) -> None:
         readings = data.get("data", {})
-        ts = data.get("ts", 0)
+        ts_device = data.get("ts", 0)
 
+        flat: dict[str, float] = {}
         for sensor_name, sensor_data in readings.items():
-            if isinstance(sensor_data, dict) and "value" in sensor_data:
-                try:
-                    self._db.save_reading(
-                        board_id=board_id,
-                        sensor_type=sensor_name,
-                        valor=float(sensor_data["value"]),
-                        unidad=sensor_data.get("unit", ""),
-                        raw_data=str(data),
-                        ts_arduino=ts,
-                    )
-                except Exception as e:
-                    logger.error("Error guardando lectura: %s", e)
+            if not (isinstance(sensor_data, dict) and "value" in sensor_data):
+                continue
+            try:
+                value = float(sensor_data["value"])
+            except (TypeError, ValueError):
+                logger.warning("Valor no numérico de %s/%s: %r",
+                               board_id, sensor_name, sensor_data["value"])
+                continue
+            if not math.isfinite(value):
+                continue
+            flat[sensor_name] = value
+
+        if not flat:
+            return
+        try:
+            self._db.save_reading_batch(
+                board_id, flat,
+                ts_utc=int(time.time()),
+                ts_device_ms=ts_device,
+            )
+        except Exception as e:
+            logger.error("Error guardando lecturas de %s: %s", board_id, e)
 
     def on_identify(self, board_id: str, data: dict) -> None:
         logger.info("Sketch identificado en %s: %s v%s (%s sensores)",
-                    board_id,
-                    data.get("name", "unknown"),
-                    data.get("version", "?"),
-                    data.get("sensors", 0))
+                    board_id, data.get("name", "unknown"),
+                    data.get("version", "?"), data.get("sensors", 0))

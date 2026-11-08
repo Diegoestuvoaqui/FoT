@@ -1,30 +1,12 @@
+// src/firmware/abstractSensors/DHT11Adapter.h
 #ifndef DHT11_ADAPTER_H
 #define DHT11_ADAPTER_H
 
-#include "ISensor.h"
-#include <DHT.h>
+#include "DHTAdapter.h"
 
-class DHT11Adapter : public ISensor {
-private:
-    DHT* _dht;
-    uint8_t _pin;
-    float _lastTemp;
-    float _lastHum;
-    bool _readTemp;
-
-    // ← NUEVO: Cache compartido entre todas las instancias
-    static float _sharedTemp;
-    static float _sharedHum;
-    static unsigned long _lastReadMs;
-    static const unsigned long MIN_READ_INTERVAL = 2000; // 2 segundos
-
+class DHT11Adapter : public DHTAdapter {
 public:
-    DHT11Adapter(DHT* dht, const char* name);
-
-    float read() override;
-    bool isValid() override;
-    const char* getName() override;
-    const char* getUnit() override;
+    DHT11Adapter(DHT* dht, const char* name) : DHTAdapter(dht, name, DHT11) {}
 };
 
 #endif

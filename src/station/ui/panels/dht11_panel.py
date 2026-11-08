@@ -1,5 +1,4 @@
-# ui/panels/dht11_panel_v2.py
-# Ejemplo de cómo quedaría tu panel usando los widgets nuevos
+# ui/panels/dht11_panel.py
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -12,17 +11,11 @@ from ui.theme import FONT_TITLE, FONT_NORMAL, FONT_SMALL, COLORS
 from ui.widgets.event_log import EventLog
 from ui.widgets.canvas_chart import CanvasLineChart
 from ui.widgets.gauge_widget import GaugeWidget
-from ui.utils.time_utils import ms_timestamp_to_local, format_elapsed
+from ui.utils.time_utils import format_elapsed
 
 
 class DHT11Panel(ctk.CTkFrame):
-    """
-    Panel DHT11 mejorado:
-    - Gauges circulares para valores actuales.
-    - Gráfico Canvas nativo (rápido, sin matplotlib).
-    - Unidades correctas: °C y % HR.
-    - Tiempo formateado correctamente desde ms.
-    """
+    """Panel DHT11: gauges + gráfico + lista de dispositivos + log."""
 
     def __init__(
         self,
@@ -47,36 +40,38 @@ class DHT11Panel(ctk.CTkFrame):
         self._build_bottom()
 
     # --- Construcción ---
-
     def _build_left(self):
-        left = ctk.CTkFrame(self, corner_radius=12, border_width=1, border_color=COLORS["border"])
+        left = ctk.CTkFrame(self, corner_radius=12, border_width=1,
+                            border_color=COLORS["border"])
         left.grid(row=0, column=0, sticky="nsew", padx=(8, 4), pady=8)
         left.grid_rowconfigure(1, weight=1)
         left.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(left, text="🌡️ Arduinos DHT11", font=FONT_TITLE).grid(
+        ctk.CTkLabel(left, text="Dispositivos", font=FONT_TITLE).grid(
             row=0, column=0, pady=(10, 4), padx=10, sticky="w")
 
-        self._list_frame = ctk.CTkScrollableFrame(left, label_text="", corner_radius=8)
+        self._list_frame = ctk.CTkScrollableFrame(
+            left, label_text="", corner_radius=8)
         self._list_frame.grid(row=1, column=0, sticky="nsew", padx=6, pady=4)
         self._list_frame.grid_columnconfigure(0, weight=1)
 
     def _build_right(self):
-        right = ctk.CTkFrame(self, corner_radius=12, border_width=1, border_color=COLORS["border"])
+        right = ctk.CTkFrame(self, corner_radius=12, border_width=1,
+                             border_color=COLORS["border"])
         right.grid(row=0, column=1, sticky="nsew", padx=(4, 8), pady=8)
         right.grid_columnconfigure(0, weight=1)
-        right.grid_rowconfigure(3, weight=1)
+        right.grid_rowconfigure(6, weight=1)
 
-        # Título
         self._lbl_title = ctk.CTkLabel(
             right, text="— Selecciona un Arduino —", font=FONT_TITLE,
         )
-        self._lbl_title.grid(row=0, column=0, columnspan=2, padx=12, pady=(12, 4), sticky="w")
+        self._lbl_title.grid(row=0, column=0, columnspan=2, padx=12,
+                             pady=(12, 4), sticky="w")
 
-        # Estado con badge de color
         status_frame = ctk.CTkFrame(right, fg_color="transparent")
         status_frame.grid(row=1, column=0, columnspan=2, padx=12, pady=4, sticky="w")
-        ctk.CTkLabel(status_frame, text="Estado:", font=FONT_NORMAL).pack(side="left", padx=(0, 8))
+        ctk.CTkLabel(status_frame, text="Estado:",
+                     font=FONT_NORMAL).pack(side="left", padx=(0, 8))
         self._lbl_status = ctk.CTkLabel(
             status_frame, text="Sin conexión", width=130,
             font=("Roboto", 12, "bold"), corner_radius=6,
@@ -84,7 +79,6 @@ class DHT11Panel(ctk.CTkFrame):
         )
         self._lbl_status.pack(side="left")
 
-        # Gauges para temperatura y humedad (más bonitos que texto plano)
         gauges_frame = ctk.CTkFrame(right, fg_color="transparent")
         gauges_frame.grid(row=2, column=0, columnspan=2, padx=12, pady=8, sticky="ew")
         gauges_frame.grid_columnconfigure((0, 1), weight=1)
@@ -105,29 +99,29 @@ class DHT11Panel(ctk.CTkFrame):
         )
         self._gauge_hum.grid(row=0, column=1, padx=8, pady=4)
 
-        # Timestamp de última lectura
         self._lbl_last = ctk.CTkLabel(
             right, text="Sin datos", font=FONT_SMALL, text_color="gray",
         )
-        self._lbl_last.grid(row=3, column=0, columnspan=2, padx=12, pady=(2, 4), sticky="w")
+        self._lbl_last.grid(row=3, column=0, columnspan=2, padx=12,
+                            pady=(2, 4), sticky="w")
 
-        # Separador
         ctk.CTkFrame(right, height=2, fg_color="#3F3F3F").grid(
             row=4, column=0, columnspan=2, sticky="ew", padx=12, pady=6)
 
-        # Gráfico Canvas nativo (reemplaza a matplotlib)
-        ctk.CTkLabel(right, text="📈 Historial de lecturas", font=FONT_TITLE).grid(
+        ctk.CTkLabel(right, text="📈 Historial de lecturas",
+                     font=FONT_TITLE).grid(
             row=5, column=0, columnspan=2, padx=12, pady=(0, 8), sticky="w")
 
         self._sensor_chart = CanvasLineChart(right, max_points=300)
-        self._sensor_chart.grid(row=6, column=0, columnspan=2, sticky="nsew", padx=12, pady=(0, 8))
+        self._sensor_chart.grid(row=6, column=0, columnspan=2,
+                                sticky="nsew", padx=12, pady=(0, 8))
 
     def _build_bottom(self):
         self.event_log = EventLog(self)
-        self.event_log.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=8, pady=(0, 8))
+        self.event_log.grid(row=1, column=0, columnspan=2,
+                            sticky="nsew", padx=8, pady=(0, 8))
 
     # --- API pública ---
-
     def set_boards(self, boards: list):
         self._boards = boards
         self._refresh_list()
@@ -146,9 +140,7 @@ class DHT11Panel(ctk.CTkFrame):
             return
 
         readings = data.get("data", {})
-        ts_ms = data.get("ts", 0)
 
-        # Temperatura
         temp = None
         temp_data = readings.get("temp", {})
         if isinstance(temp_data, dict) and "value" in temp_data:
@@ -157,7 +149,6 @@ class DHT11Panel(ctk.CTkFrame):
                 temp = float(val)
         self._gauge_temp.set_value(temp)
 
-        # Humedad
         hum = None
         hum_data = readings.get("hum", {})
         if isinstance(hum_data, dict) and "value" in hum_data:
@@ -166,22 +157,17 @@ class DHT11Panel(ctk.CTkFrame):
                 hum = float(val)
         self._gauge_hum.set_value(hum)
 
-        # Tiempo: asumimos que ts es un timestamp epoch en ms
-        # Si tu Arduino envía tiempo transcurrido, usa format_elapsed(ts_ms)
-        time_str = ms_timestamp_to_local(ts_ms) if ts_ms > 1_000_000_000 else format_elapsed(ts_ms)
+        # Fase 4: usamos la hora de llegada a la estación (verdad local).
+        arrival = datetime.now()
         self._lbl_last.configure(
-            text=f"Última lectura: {time_str}",
+            text=f"Última lectura: {arrival.strftime('%H:%M:%S')}",
             text_color=COLORS["accent"],
         )
 
-        # Agregar al gráfico si hay datos válidos
         if temp is not None or hum is not None:
-            now = datetime.now()
-            self._sensor_chart.add_reading(now, {"temp": temp, "hum": hum})
-
-            # Cache para historial
+            self._sensor_chart.add_reading(arrival, {"temp": temp, "hum": hum})
             self._readings_cache.append({
-                "ts_base": now.isoformat(),
+                "ts_base": arrival.isoformat(),
                 "temp": temp,
                 "hum": hum,
             })
@@ -189,7 +175,6 @@ class DHT11Panel(ctk.CTkFrame):
                 self._readings_cache = self._readings_cache[-500:]
 
     def show_history(self, board_id: str, readings: list[dict]):
-        """Carga historial desde DB al seleccionar una placa."""
         self._readings_cache = readings
         self._refresh_chart_from_cache()
 
@@ -197,7 +182,6 @@ class DHT11Panel(ctk.CTkFrame):
         self.event_log.add_line(text, tipo)
 
     # --- Interno ---
-
     def _refresh_list(self):
         for w in self._list_frame.winfo_children():
             w.destroy()
@@ -211,7 +195,7 @@ class DHT11Panel(ctk.CTkFrame):
         row.grid_columnconfigure(0, weight=1)
 
         name = board.sketch_name or board.id
-        lbl = ctk.CTkLabel(row, text=f"🌡️ {name}", font=FONT_NORMAL, anchor="w")
+        lbl = ctk.CTkLabel(row, text=f"🌡 {name}", font=FONT_NORMAL, anchor="w")
         lbl.grid(row=0, column=0, padx=10, pady=6, sticky="w")
 
         status = "●" if board.status == "Conectada" else "○"
@@ -224,7 +208,6 @@ class DHT11Panel(ctk.CTkFrame):
 
     def _select_board(self, board_id: str):
         self._selected_board_id = board_id
-        # Reset visual
         self._gauge_temp.set_value(None)
         self._gauge_hum.set_value(None)
         self._sensor_chart.clear()
@@ -233,9 +216,7 @@ class DHT11Panel(ctk.CTkFrame):
             self._on_select_board(board_id)
 
     def _refresh_chart_from_cache(self):
-        timestamps = []
-        temps = []
-        hums = []
+        timestamps, temps, hums = [], [], []
         for r in self._readings_cache:
             ts_str = r.get("ts_base", "")
             try:

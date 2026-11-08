@@ -6,7 +6,7 @@ platformio.creator
 platformio.cxxflags
 platformio.files
 platformio.includes
-platformio.ini
+#platformio.ini
 
 # === IDEs ===
 .idea
@@ -48,3 +48,6 @@ src/station/iot.log
 # === Sistema ===
 .DS_Store
 Thumbs.db
+
+# Firmware
+secrets.h

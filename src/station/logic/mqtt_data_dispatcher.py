@@ -1,11 +1,18 @@
-# logic/mqtt_data_dispatcher.py
-"""
-Receptor único de datos MQTT para todas las placas WiFi.
-Se registra una sola vez en el bus y enruta a DataReceiver, BoardService, etc.
+# src/station/logic/mqtt_data_dispatcher.py
+"""Único observer del bus MQTT para topics de nodos.
+
+Novedades Fase 4:
+- Valida board_id con regex.
+- Separa _handle_sensores / _handle_estado.
+- Publica a través de SensorManager (no callbacks sueltos).
+- mark_seen() independiente de is_connected() → rompe el círculo vicioso
+  que dejaba bridges WiFi en "nunca visto".
+- Maneja ack de relé (preparado para Fase 5).
 """
 from __future__ import annotations
 
 import logging
+import re
 from typing import Callable, Optional
 
 from logic.sensor_manager import SensorManager
@@ -14,65 +21,57 @@ logger = logging.getLogger(__name__)
 
 
 class MQTTDataDispatcher:
-    """
-    Único observer del MQTTEventBus para topics de sensores.
-    Enruta datos a:
-    - DataReceiver (guardar en DB)
-    - BoardService (identificación de sketch, auto-registro)
-
-    NOTA: Solo marca el WiFiBridge como 'visto' en mensajes de estado/conexión,
-    NO en lecturas de sensores periódicas.
-    """
+    BOARD_ID_RE = re.compile(r"^[A-Za-z0-9_-]{3,40}$")
 
     def __init__(self,
                  sensor_manager: SensorManager,
-                 on_reading: Optional[Callable[[str, dict], None]] = None,
-                 on_identify: Optional[Callable[[str, dict], None]] = None,
                  on_new_board: Optional[Callable[[str, str], None]] = None):
-        self._sensor_manager = sensor_manager
-        self._on_reading = on_reading
-        self._on_identify = on_identify
-        self._on_new_board = on_new_board  # callback(board_id, conn_type)
+        self._sm = sensor_manager
+        self._on_new_board = on_new_board
         self._known_boards: set[str] = set()
 
     def on_event(self, topic: str, data: dict) -> None:
         parts = topic.split("/")
         if len(parts) < 3 or parts[0] != "fot":
             return
+        board_id, msg_type = parts[1], parts[2]
 
-        board_id = parts[1]
-        msg_type = parts[2] if len(parts) > 2 else "unknown"
+        if not self.BOARD_ID_RE.match(board_id):
+            logger.warning("board_id descartado (inválido): %r", board_id)
+            return
 
         # Auto-descubrimiento
         if board_id not in self._known_boards:
             self._known_boards.add(board_id)
             if self._on_new_board:
-                self._on_new_board(board_id, "wifi")
-            logger.info("Nueva placa WiFi detectada vía MQTT: %s", board_id)
+                try:
+                    self._on_new_board(board_id, "wifi")
+                except Exception as e:
+                    logger.error("on_new_board falló: %s", e)
+            logger.info("Nueva placa WiFi detectada: %s", board_id)
 
-        # ← NUEVO: marcar como visto SIEMPRE que llegue un mensaje de esta placa
-        self._mark_bridge_seen(board_id)
+        # Lifecycle del bridge (no-op si no existe)
+        self._sm.mark_seen(board_id)
 
-        # Enrutar según tipo
-        if msg_type == "sensores" and "data" in data:
-            if self._on_reading:
-                self._on_reading(board_id, data)
-
+        if msg_type == "sensores":
+            self._handle_sensores(board_id, data)
         elif msg_type == "estado":
-            if "sketch" in data and self._on_identify:
-                self._on_identify(board_id, data)
+            self._handle_estado(board_id, data)
         else:
-            logger.debug("Mensaje MQTT no manejado: %s → keys=%s", topic, list(data.keys()))
+            logger.debug("MQTT topic no manejado: %s", topic)
 
-    def _mark_bridge_seen(self, board_id: str) -> None:
-        """
-        Marca el WiFiBridge como 'visto' solo en mensajes de estado/conexión.
-        No se llama en lecturas de sensores periódicas.
-        """
-        if not self._sensor_manager.is_connected(board_id):
+    # ------------------------------------------------------------------
+    def _handle_sensores(self, board_id: str, data: dict) -> None:
+        if "data" not in data:
             return
+        self._sm.publish_reading(board_id, data)
 
-        bridge = self._sensor_manager.get_bridge(board_id)
-        if bridge is not None and hasattr(bridge, 'mark_seen'):
-            bridge.mark_seen()
-            logger.debug("WiFiBridge %s marcado como visto (estado/identify)", board_id)
+    def _handle_estado(self, board_id: str, data: dict) -> None:
+        if "sketch" in data:
+            self._sm.publish_identify(board_id, data)
+
+        if "status" in data:
+            self._sm.publish_state(board_id, data)
+
+        if data.get("ack") == "relay":
+            self._sm.publish_relay_ack(board_id, data)
