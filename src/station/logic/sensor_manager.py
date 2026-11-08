@@ -95,10 +95,25 @@ class SensorManager:
         return True
 
     def mark_seen(self, board_id: str) -> None:
-        """Señal de vida para el bridge (llamado por el dispatcher)."""
+        """Señal de vida. Si no existe bridge para esta placa, lo crea
+        aquí mismo (auto-registro al primer mensaje MQTT). Así
+        set_relay/send_command funcionan sin exigir que el usuario
+        pulse 'Conectar' antes."""
         bridge = self._bridges.get(board_id)
-        if bridge is not None:
-            bridge.mark_seen()
+        if bridge is None:
+            if self._mqtt_bus is None:
+                logger.error(
+                    "mark_seen(%s) sin MQTTEventBus: no puedo crear bridge",
+                    board_id)
+                return
+            self.ensure_wifi_bridge(board_id)
+            bridge = self._bridges.get(board_id)
+            if bridge is None:
+                logger.error(
+                    "mark_seen(%s): ensure_wifi_bridge no creó el bridge",
+                    board_id)
+                return
+        bridge.mark_seen()
 
     # ------------------------------------------------------------------
     # USB / BT (sin cambios funcionales, sí tipado IBridge)
@@ -162,6 +177,15 @@ class SensorManager:
 
     def set_interval(self, board_id: str, ms: int) -> bool:
         return self.send_command(board_id, {"cmd": "interval", "ms": ms})
+
+    def set_relay(self, board_id: str, actuator_id: str,
+        state: bool, seq: int) -> bool:
+        return self.send_command(board_id, {
+            "cmd": "relay",
+            "id": actuator_id,
+            "state": 1 if state else 0,
+            "seq": seq,
+        })
 
     def get_connected(self) -> list[str]:
         return [bid for bid, b in self._bridges.items() if b.is_connected()]

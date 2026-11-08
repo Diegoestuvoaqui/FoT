@@ -211,6 +211,13 @@ def main() -> None:
     )
     usb_scanner.start()
 
+    # Relay
+
+    def _on_relay_ack_process(board_id: str, data: dict) -> None:
+        board_service.on_relay_ack(board_id, data)
+
+    sensor_manager.add_relay_ack_observer(_on_relay_ack_process)
+    
     # --------------------------------------------------------------
     # UI con login embebido
     # --------------------------------------------------------------
@@ -312,6 +319,7 @@ def main() -> None:
             cleanup = getattr(main_window_ref[0], "session_cleanup", None)
             if cleanup:
                 cleanup()
+        board_service.stop()  
         sensor_manager.disconnect_all()
         mqtt_bus.stop()
         if discovery is not None:

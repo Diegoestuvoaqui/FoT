@@ -103,6 +103,7 @@ class MainWindow:
         self.dht11_panel = DHT11Panel(
             self._content_area,
             on_select_board=self._on_select_board,
+            on_relay_toggle=self._on_relay_toggle,
         )
         self._panels["dht11"] = self.dht11_panel
 
@@ -315,8 +316,25 @@ class MainWindow:
         if board_id:
             readings = self._board_ctrl.get_readings(board_id, limit=100)
             self.dht11_panel.show_history(board_id, readings)
+    
+    def _on_relay_toggle(self, board_id: str, state: bool) -> None:
+        if self._user is None:
+            return
+        ok, msg = self._board_ctrl.set_relay(self._user, board_id, state)
+        if not ok:
+            self._notif_mgr.notify(
+                "No se pudo cambiar el relé",
+                msg,
+                tipo="error",
+            )
+        else:
+            self._notif_mgr.notify(
+                f"Relé {'encendido' if state else 'apagado'}",
+                f"Esperando confirmación de {board_id}…",
+                tipo="info",
+            )
 
-    # --- Arduino Panel ---
+    # --- Placas Panel ---
     def _handle_manual_register(self, board_id: str, port: str,
                                 conn_type: str, extra: dict) -> None:
         logger.info("Registro manual: %s (%s) en %s", board_id, conn_type, port)

@@ -1,5 +1,7 @@
 # service/board_service.py
 import logging
+import threading
+import time
 from typing import Callable, Optional
 
 from data.database import Database
@@ -10,6 +12,9 @@ logger = logging.getLogger(__name__)
 
 
 class BoardService:
+    RELAY_ACK_TIMEOUT_S = 5.0
+    RELAY_RATE_LIMIT_S = 1.0
+
     def __init__(self,
                  db: Database,
                  sensor_manager: SensorManager,
@@ -20,6 +25,12 @@ class BoardService:
         self._boards: dict[str, Board] = {}
         self._observers: list[Callable[[Board], None]] = []
         self._sketch_panel_map: dict[str, str | None] = {}
+
+        # Fase 5: estado de relé
+        self._relay_seq: dict[str, int] = {}
+        self._pending_acks: dict[str, dict] = {}
+        self._last_relay_cmd: dict[str, float] = {}
+
         self._load_sketch_catalog()
 
     # ==================================================================
@@ -30,20 +41,15 @@ class BoardService:
                        port: str,
                        conn_type: str = "usb",
                        factory_data: Optional[dict] = None) -> Board:
-        """Registra o actualiza la presencia física. NUNCA asigna dueño."""
         board = self._boards.get(board_id)
         if board:
             board.port = port
             board.conn = conn_type
             board.last_seen = self._now()
             if factory_data:
-                board.hwid = factory_data.get("hwid")
-                board.vid = factory_data.get("vid")
-                board.pid = factory_data.get("pid")
-                board.serial_number = factory_data.get("serial_number")
-                board.manufacturer = factory_data.get("manufacturer")
-                board.product = factory_data.get("product")
-                board.location = factory_data.get("location")
+                for f in ("hwid", "vid", "pid", "serial_number",
+                          "manufacturer", "product", "location"):
+                    setattr(board, f, factory_data.get(f))
             board.on_physical_detected()
         else:
             existing = self._db.get_board_by_id(board_id)
@@ -61,7 +67,6 @@ class BoardService:
                 manufacturer=factory_data.get("manufacturer") if factory_data else None,
                 product=factory_data.get("product") if factory_data else None,
                 location=factory_data.get("location") if factory_data else None,
-                # Nuevos campos Fase 4
                 hw_model=existing.get("hw_model") if existing else None,
                 mac=existing.get("mac") if existing else None,
                 ip=existing.get("ip") if existing else None,
@@ -73,6 +78,7 @@ class BoardService:
             )
             board.on_physical_detected()
             self._boards[board_id] = board
+            self._reload_relays(board)
 
         self._persist_board(board)
         self._notify_change(board)
@@ -116,7 +122,6 @@ class BoardService:
             return False, f"Tipo de conexión desconocido: {board.conn}"
 
         if ok:
-            # WiFi: "Detectada" hasta el primer heartbeat; USB/BT: "Conectada".
             board.status = "Detectada" if board.conn == "wifi" else "Conectada"
             board.last_seen = self._now()
             self._persist_board(board)
@@ -138,10 +143,9 @@ class BoardService:
         self._notify_change(board)
 
     # ==================================================================
-    # Callbacks del pipeline de ingesta (llamados desde main.py)
+    # Callbacks de ingesta
     # ==================================================================
     def on_board_reading(self, board_id: str) -> None:
-        """Heartbeat de datos: pone la placa online (verdad viva)."""
         board = self._boards.get(board_id)
         if board is None:
             return
@@ -151,11 +155,9 @@ class BoardService:
             self._notify_change(board)
 
     def on_board_state(self, board_id: str, data: dict) -> None:
-        """Mensaje 'estado': metadata + LWT online/offline."""
         board = self._boards.get(board_id)
         if board is None:
             return
-
         changed = False
         for attr in ("hw_model", "mac", "ip", "fw_version", "power_mode"):
             val = data.get(attr)
@@ -167,7 +169,6 @@ class BoardService:
             if val is not None and getattr(board, attr) != val:
                 setattr(board, attr, val)
                 changed = True
-
         status = data.get("status")
         if status == "offline":
             if board.on_physical_lost():
@@ -175,7 +176,6 @@ class BoardService:
         elif status == "online" or data.get("boot"):
             if board.mark_alive():
                 changed = True
-
         board.last_seen = self._now()
         self._persist_board(board)
         if changed:
@@ -197,13 +197,142 @@ class BoardService:
         board.mark_alive()
         self._persist_board(board)
 
+        # Crear actuador si el nodo reporta >0
+        if int(data.get("actuators", 0)) > 0:
+            try:
+                self._db.upsert_actuator(
+                    board_id, "relay1", kind="relay",
+                    label="Relé 1",
+                    pin=str(data.get("relay_pin", "GPIO26")),
+                )
+            except Exception as e:
+                logger.error("Error creando actuador en %s: %s", board_id, e)
+        self._reload_relays(board)
+
         if board.sketch_id and board.sketch_id not in self._sketch_panel_map:
             self._db.upsert_sketch(board.sketch_id, board.sketch_name or "")
             self._sketch_panel_map[board.sketch_id] = None
-            logger.info(
-                "Sketch nuevo registrado en catálogo sin panel: %s", board.sketch_id)
 
         self._notify_change(board)
+
+    # ==================================================================
+    # Relé
+    # ==================================================================
+    def set_relay(self, actor, board_id: str, state: bool,
+                  actuator_id: str = "relay1") -> tuple[bool, str]:
+        """Solo dueño o admin, placa online, 1 cambio/s, con ack timeout."""
+        board = self._boards.get(board_id)
+        if board is None:
+            return False, "Placa no registrada"
+
+        is_owner = board.usuario_id is not None and board.usuario_id == actor.id
+        if not (is_owner or actor.is_admin()):
+            return False, "Sin permiso para controlar esta placa"
+
+        if not self._sensor_mgr.is_connected(board_id):
+            return False, "La placa no está en línea"
+
+        now = time.time()
+        last = self._last_relay_cmd.get(board_id, 0.0)
+        if now - last < self.RELAY_RATE_LIMIT_S:
+            return False, "Espera un segundo entre comandos"
+        self._last_relay_cmd[board_id] = now
+
+        seq = self._relay_seq.get(board_id, 0) + 1
+        self._relay_seq[board_id] = seq
+
+        try:
+            event_id = self._db.save_relay_event(
+                board_id=board_id,
+                actuator_id=actuator_id,
+                state=state,
+                source="ui",
+                usuario_id=actor.id,
+                seq=seq,
+            )
+        except Exception as e:
+            logger.error("Error guardando relay_event: %s", e)
+            return False, "Error guardando evento de relé"
+
+        self._db.set_actuator_desired(board_id, actuator_id, state)
+
+        ok = self._sensor_mgr.set_relay(board_id, actuator_id, state, seq)
+        if not ok:
+            logger.warning("Fallo enviando comando de relé a %s", board_id)
+            # rollback desired
+            old = self._db.get_actuators(board_id)
+            old_state = next(
+                (a.get("reported_state", 0) for a in old
+                 if a["actuator_id"] == actuator_id), 0)
+            self._db.set_actuator_desired(
+                board_id, actuator_id, bool(old_state))
+            self._reload_relays(board)
+            self._notify_change(board)
+            return False, "No se pudo enviar el comando al nodo"
+
+        self._schedule_ack_timeout(board_id, event_id)
+
+        self._reload_relays(board)
+        self._notify_change(board)
+        return True, ""
+
+    def on_relay_ack(self, board_id: str, data: dict) -> None:
+        if data.get("ack") != "relay":
+            return
+        if data.get("id") != "relay1":
+            return
+        state = bool(data.get("state", 0))
+        seq = data.get("seq", 0)
+
+        info = self._pending_acks.pop(board_id, None)
+        if info and info.get("timer"):
+            info["timer"].cancel()
+            try:
+                self._db.ack_relay_event(info["event_id"])
+            except Exception as e:
+                logger.error("Error marcando ack: %s", e)
+
+        try:
+            self._db.set_actuator_reported(
+                board_id, "relay1", state, ts=int(time.time()))
+        except Exception as e:
+            logger.error("Error guardando reported_state: %s", e)
+
+        logger.info("Relay ack %s: state=%s seq=%s", board_id, state, seq)
+
+        board = self._boards.get(board_id)
+        if board is not None:
+            board.mark_alive()
+            self._reload_relays(board)
+            self._notify_change(board)
+
+    def _schedule_ack_timeout(self, board_id: str, event_id: int) -> None:
+        old = self._pending_acks.pop(board_id, None)
+        if old and old.get("timer"):
+            old["timer"].cancel()
+
+        def on_timeout():
+            info = self._pending_acks.pop(board_id, None)
+            if info is None:
+                return
+            logger.warning(
+                "Relay ack timeout %s (event %s)", board_id, event_id)
+            board = self._boards.get(board_id)
+            if board is not None:
+                self._reload_relays(board)
+                self._notify_change(board)
+
+        timer = threading.Timer(self.RELAY_ACK_TIMEOUT_S, on_timeout)
+        timer.daemon = True
+        timer.start()
+        self._pending_acks[board_id] = {
+            "event_id": event_id, "timer": timer}
+
+    def _reload_relays(self, board: Board) -> None:
+        try:
+            board.relays = self._db.get_actuators(board.id)
+        except Exception as e:
+            logger.error("Error cargando relays de %s: %s", board.id, e)
 
     # ==================================================================
     # Eliminación / asignación
@@ -213,9 +342,8 @@ class BoardService:
         self._sensor_mgr.disconnect(board_id)
         try:
             self._db.delete_board(board_id)
-            logger.info("Placa eliminada: %s", board_id)
         except Exception as e:
-            logger.error("Error eliminando placa %s de DB: %s", board_id, e)
+            logger.error("Error eliminando %s: %s", board_id, e)
 
     def unassign_board(self, board_id: str, usuario_id: int) -> None:
         board = self._boards.get(board_id)
@@ -258,7 +386,7 @@ class BoardService:
         try:
             self._db.delete_board(board_id)
         except Exception as e:
-            logger.error("Error eliminando placa %s: %s", board_id, e)
+            logger.error("Error eliminando %s: %s", board_id, e)
 
     # ==================================================================
     # Estado físico
@@ -268,7 +396,7 @@ class BoardService:
         board = self._boards.get(board_id)
         if not board:
             return
-        logger.info("Marcando placa %s como desconectada: %s", board_id, reason)
+        logger.info("Marcando %s desconectada: %s", board_id, reason)
         self._sensor_mgr.disconnect(board_id)
         if board.on_physical_lost():
             self._persist_board(board)
@@ -280,20 +408,17 @@ class BoardService:
         if board:
             if is_connected:
                 if port_data:
-                    board.hwid = port_data.get("hwid")
-                    board.vid = port_data.get("vid")
-                    board.pid = port_data.get("pid")
-                    board.serial_number = port_data.get("serial_number")
-                    board.manufacturer = port_data.get("manufacturer")
-                    board.product = port_data.get("product")
-                    board.location = port_data.get("location")
+                    for f in ("hwid", "vid", "pid", "serial_number",
+                              "manufacturer", "product", "location"):
+                        setattr(board, f, port_data.get(f))
                 board.last_seen = self._now()
                 changed = board.on_physical_detected()
                 self._persist_board(board)
                 if changed:
                     self._notify_change(board)
             else:
-                self.mark_board_disconnected(board_id, "Puerto físico desconectado")
+                self.mark_board_disconnected(
+                    board_id, "Puerto físico desconectado")
         else:
             if is_connected and port_data:
                 self.register_board(
@@ -349,6 +474,10 @@ class BoardService:
     def set_interval(self, board_id: str, ms: int) -> bool:
         return self._sensor_mgr.set_interval(board_id, ms)
 
+    def get_relays(self, board_id: str) -> list[dict]:
+        board = self._boards.get(board_id)
+        return list(board.relays) if board else []
+
     # ==================================================================
     # Persistencia
     # ==================================================================
@@ -390,7 +519,7 @@ class BoardService:
             board = Board(
                 board_id=row["id"],
                 conn=row.get("conn", "usb"),
-                status="Desconectada",  # verdad viva: arranca offline
+                status="Desconectada",
                 usuario_id=row.get("usuario_id"),
                 sketch_id=row.get("sketch_id"),
                 sketch_name=row.get("sketch_name"),
@@ -414,6 +543,7 @@ class BoardService:
                 interval_ms=row.get("interval_ms"),
             )
             self._boards[board.id] = board
+            self._reload_relays(board)
 
     def _load_sketch_catalog(self) -> None:
         try:
@@ -422,12 +552,9 @@ class BoardService:
                 s["sketch_id"]: s.get("panel_key") for s in sketches
             }
         except Exception as e:
-            logger.error("Error cargando catálogo de sketches: %s", e)
+            logger.error("Error cargando catálogo: %s", e)
             self._sketch_panel_map = {}
 
-    # ==================================================================
-    # Helpers
-    # ==================================================================
     @staticmethod
     def _now() -> str:
         from datetime import datetime
@@ -439,12 +566,11 @@ class BoardService:
     def add_observer(self, callback: Callable[[Board], None]) -> None:
         if callback not in self._observers:
             self._observers.append(callback)
-        # Replay del estado actual para no perder placas ya detectadas.
         for board in self._boards.values():
             try:
                 callback(board)
             except Exception as e:
-                logger.error("Error en observer durante replay: %s", e)
+                logger.error("Error en replay observer: %s", e)
 
     def remove_observer(self, callback: Callable[[Board], None]) -> None:
         if callback in self._observers:
@@ -464,6 +590,8 @@ class BoardService:
         self._sensor_mgr.check_wifi_timeouts()
 
     def stop(self) -> None:
-        self._sensor_mgr.disconnect_all()
-        self._boards.clear()
-        self._observers.clear()
+        """Detiene timers pendientes. No cierra el sensor_manager (lo hace main)."""
+        for info in self._pending_acks.values():
+            if info.get("timer"):
+                info["timer"].cancel()
+        self._pending_acks.clear()

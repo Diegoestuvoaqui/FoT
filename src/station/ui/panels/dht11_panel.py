@@ -11,16 +11,15 @@ from ui.theme import FONT_TITLE, FONT_NORMAL, FONT_SMALL, COLORS
 from ui.widgets.event_log import EventLog
 from ui.widgets.canvas_chart import CanvasLineChart
 from ui.widgets.gauge_widget import GaugeWidget
-from ui.utils.time_utils import format_elapsed
+from ui.widgets.relay_control import RelayControl
 
 
 class DHT11Panel(ctk.CTkFrame):
-    """Panel DHT11: gauges + gráfico + lista de dispositivos + log."""
-
     def __init__(
         self,
         master,
         on_select_board: Optional[Callable[[str | None], None]] = None,
+        on_relay_toggle: Optional[Callable[[str, bool], None]] = None,
         **kwargs,
     ):
         super().__init__(master, **kwargs)
@@ -31,6 +30,7 @@ class DHT11Panel(ctk.CTkFrame):
         self.grid_rowconfigure(1, weight=1, minsize=120)
 
         self._on_select_board = on_select_board
+        self._on_relay_toggle = on_relay_toggle
         self._boards: list = []
         self._selected_board_id: str | None = None
         self._readings_cache: list[dict] = []
@@ -39,17 +39,14 @@ class DHT11Panel(ctk.CTkFrame):
         self._build_right()
         self._build_bottom()
 
-    # --- Construcción ---
     def _build_left(self):
         left = ctk.CTkFrame(self, corner_radius=12, border_width=1,
                             border_color=COLORS["border"])
         left.grid(row=0, column=0, sticky="nsew", padx=(8, 4), pady=8)
         left.grid_rowconfigure(1, weight=1)
         left.grid_columnconfigure(0, weight=1)
-
         ctk.CTkLabel(left, text="Dispositivos", font=FONT_TITLE).grid(
             row=0, column=0, pady=(10, 4), padx=10, sticky="w")
-
         self._list_frame = ctk.CTkScrollableFrame(
             left, label_text="", corner_radius=8)
         self._list_frame.grid(row=1, column=0, sticky="nsew", padx=6, pady=4)
@@ -60,11 +57,10 @@ class DHT11Panel(ctk.CTkFrame):
                              border_color=COLORS["border"])
         right.grid(row=0, column=1, sticky="nsew", padx=(4, 8), pady=8)
         right.grid_columnconfigure(0, weight=1)
-        right.grid_rowconfigure(6, weight=1)
+        right.grid_rowconfigure(7, weight=1)
 
         self._lbl_title = ctk.CTkLabel(
-            right, text="— Selecciona un Arduino —", font=FONT_TITLE,
-        )
+            right, text="— Selecciona un Arduino —", font=FONT_TITLE)
         self._lbl_title.grid(row=0, column=0, columnspan=2, padx=12,
                              pady=(12, 4), sticky="w")
 
@@ -75,51 +71,50 @@ class DHT11Panel(ctk.CTkFrame):
         self._lbl_status = ctk.CTkLabel(
             status_frame, text="Sin conexión", width=130,
             font=("Roboto", 12, "bold"), corner_radius=6,
-            fg_color="#6B7280", text_color="white",
-        )
+            fg_color="#6B7280", text_color="white")
         self._lbl_status.pack(side="left")
 
         gauges_frame = ctk.CTkFrame(right, fg_color="transparent")
         gauges_frame.grid(row=2, column=0, columnspan=2, padx=12, pady=8, sticky="ew")
         gauges_frame.grid_columnconfigure((0, 1), weight=1)
-
         self._gauge_temp = GaugeWidget(
             gauges_frame, title="Temperatura", unit="°C",
             min_val=-10, max_val=50,
             color_low="#3B82F6", color_mid="#F59E0B", color_high="#EF4444",
-            size=140,
-        )
+            size=140)
         self._gauge_temp.grid(row=0, column=0, padx=8, pady=4)
-
         self._gauge_hum = GaugeWidget(
             gauges_frame, title="Humedad Relativa", unit="%",
             min_val=0, max_val=100,
             color_low="#EF4444", color_mid="#F59E0B", color_high="#3B82F6",
-            size=140,
-        )
+            size=140)
         self._gauge_hum.grid(row=0, column=1, padx=8, pady=4)
 
+        # Fase 5: control del relé
+        self._relay_control = RelayControl(
+            right, on_toggle=self._on_relay_clicked)
+        self._relay_control.grid(row=3, column=0, columnspan=2,
+                                 padx=12, pady=(4, 4), sticky="ew")
+        self._relay_control.grid_remove()  # oculto hasta que la placa tenga relés
+
         self._lbl_last = ctk.CTkLabel(
-            right, text="Sin datos", font=FONT_SMALL, text_color="gray",
-        )
-        self._lbl_last.grid(row=3, column=0, columnspan=2, padx=12,
+            right, text="Sin datos", font=FONT_SMALL, text_color="gray")
+        self._lbl_last.grid(row=4, column=0, columnspan=2, padx=12,
                             pady=(2, 4), sticky="w")
 
         ctk.CTkFrame(right, height=2, fg_color="#3F3F3F").grid(
-            row=4, column=0, columnspan=2, sticky="ew", padx=12, pady=6)
-
+            row=5, column=0, columnspan=2, sticky="ew", padx=12, pady=6)
         ctk.CTkLabel(right, text="📈 Historial de lecturas",
                      font=FONT_TITLE).grid(
-            row=5, column=0, columnspan=2, padx=12, pady=(0, 8), sticky="w")
-
+            row=6, column=0, columnspan=2, padx=12, pady=(0, 8), sticky="w")
         self._sensor_chart = CanvasLineChart(right, max_points=300)
-        self._sensor_chart.grid(row=6, column=0, columnspan=2,
-                                sticky="nsew", padx=12, pady=(0, 8))
+        self._sensor_chart.grid(row=7, column=0, columnspan=2, sticky="nsew",
+                                padx=12, pady=(0, 8))
 
     def _build_bottom(self):
         self.event_log = EventLog(self)
-        self.event_log.grid(row=1, column=0, columnspan=2,
-                            sticky="nsew", padx=8, pady=(0, 8))
+        self.event_log.grid(row=1, column=0, columnspan=2, sticky="nsew",
+                            padx=8, pady=(0, 8))
 
     # --- API pública ---
     def set_boards(self, boards: list):
@@ -135,42 +130,40 @@ class DHT11Panel(ctk.CTkFrame):
             self._boards.append(board)
         self._refresh_list()
 
+        if self._selected_board_id == board.id:
+            self._refresh_relay_for(board)
+
     def update_reading(self, board_id: str, data: dict):
         if self._selected_board_id != board_id:
             return
-
         readings = data.get("data", {})
 
         temp = None
-        temp_data = readings.get("temp", {})
-        if isinstance(temp_data, dict) and "value" in temp_data:
-            val = temp_data["value"]
-            if val is not None and isinstance(val, (int, float)):
-                temp = float(val)
+        td = readings.get("temp", {})
+        if isinstance(td, dict) and "value" in td:
+            v = td["value"]
+            if isinstance(v, (int, float)):
+                temp = float(v)
         self._gauge_temp.set_value(temp)
 
         hum = None
-        hum_data = readings.get("hum", {})
-        if isinstance(hum_data, dict) and "value" in hum_data:
-            val = hum_data["value"]
-            if val is not None and isinstance(val, (int, float)):
-                hum = float(val)
+        hd = readings.get("hum", {})
+        if isinstance(hd, dict) and "value" in hd:
+            v = hd["value"]
+            if isinstance(v, (int, float)):
+                hum = float(v)
         self._gauge_hum.set_value(hum)
 
-        # Fase 4: usamos la hora de llegada a la estación (verdad local).
         arrival = datetime.now()
         self._lbl_last.configure(
             text=f"Última lectura: {arrival.strftime('%H:%M:%S')}",
-            text_color=COLORS["accent"],
-        )
+            text_color=COLORS["accent"])
 
         if temp is not None or hum is not None:
             self._sensor_chart.add_reading(arrival, {"temp": temp, "hum": hum})
             self._readings_cache.append({
                 "ts_base": arrival.isoformat(),
-                "temp": temp,
-                "hum": hum,
-            })
+                "temp": temp, "hum": hum})
             if len(self._readings_cache) > 500:
                 self._readings_cache = self._readings_cache[-500:]
 
@@ -212,23 +205,47 @@ class DHT11Panel(ctk.CTkFrame):
         self._gauge_hum.set_value(None)
         self._sensor_chart.clear()
         self._lbl_title.configure(text=f"Arduino: {board_id}")
+        board = next((b for b in self._boards if b.id == board_id), None)
+        if board is not None:
+            self._refresh_relay_for(board)
         if self._on_select_board:
             self._on_select_board(board_id)
+
+    def _refresh_relay_for(self, board) -> None:
+        relays = getattr(board, "relays", []) or []
+        if not relays:
+            self._relay_control.grid_remove()
+            return
+        relay = relays[0]
+        connected = (board.status == "Conectada")
+        enabled = connected and board.usuario_id is not None
+        detail_parts = []
+        if relay.get("pin"):
+            detail_parts.append(f"Pin: {relay['pin']}")
+        if relay.get("max_on_s"):
+            detail_parts.append(f"Máx ON: {relay['max_on_s']}s")
+        self._relay_control.update_state(
+            reported=relay.get("reported_state"),
+            desired=relay.get("desired_state"),
+            connected=connected,
+            enabled=enabled,
+            last_change_text=" · ".join(detail_parts),
+        )
+        self._relay_control.grid()
+
+    def _on_relay_clicked(self, state: bool):
+        if self._selected_board_id and self._on_relay_toggle:
+            self._on_relay_toggle(self._selected_board_id, state)
 
     def _refresh_chart_from_cache(self):
         timestamps, temps, hums = [], [], []
         for r in self._readings_cache:
-            ts_str = r.get("ts_base", "")
             try:
-                dt = datetime.fromisoformat(ts_str)
+                dt = datetime.fromisoformat(r.get("ts_base", ""))
             except (ValueError, TypeError):
                 continue
             timestamps.append(dt)
             temps.append(r.get("temp"))
             hums.append(r.get("hum"))
-
         self._sensor_chart.update_data(
-            timestamps=timestamps,
-            temp=temps,
-            hum=hums,
-        )
+            timestamps=timestamps, temp=temps, hum=hums)

@@ -36,7 +36,9 @@ class Board:
                  rssi: int | None = None,
                  uptime_s: int | None = None,
                  power_mode: str | None = None,
-                 interval_ms: int | None = None):
+                 interval_ms: int | None = None,
+                 relays: list[dict] | None = None):
+
         self.id = board_id
         self.conn = conn
         self.status = status
@@ -66,6 +68,7 @@ class Board:
         self.uptime_s = uptime_s
         self.power_mode = power_mode
         self.interval_ms = interval_ms
+        self.relays: list[dict] = relays or []
 
     def is_claimed(self) -> bool:
         return self.usuario_id is not None

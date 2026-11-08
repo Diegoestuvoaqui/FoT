@@ -102,3 +102,9 @@ class BoardController:
     def delete_board(self, board_id: str) -> None:
         """Solo para admin."""
         self._service.delete_board_permanently(board_id)
+
+    def set_relay(self, actor, board_id: str, state: bool) -> tuple[bool, str]:
+        return self._service.set_relay(actor, board_id, state)
+
+    def get_relays(self, board_id: str) -> list[dict]:
+        return self._service.get_relays(board_id)
