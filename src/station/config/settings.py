@@ -24,6 +24,7 @@ class Settings:
     hourly_retention_days: int = 365      # retención de agregados por hora
     idle_lock_minutes: int = 0            # 0 = bloqueo por inactividad desactivado
     allow_self_register: bool = True      # alta de usuarios desde el login
+    
 
     # --------------------------------------------------------------
     def save(self) -> None:

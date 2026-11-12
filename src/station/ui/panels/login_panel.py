@@ -164,13 +164,10 @@ class LoginPanel(ctk.CTkFrame):
         return True, ""
 
     def _validate_password(self, password: str) -> tuple[bool, str]:
-        if not password:
-            return False, "La contraseña es obligatoria"
-        if " " in password:
-            return False, "La contraseña no puede contener espacios"
-        if len(password) < 4:
-            return False, "La contraseña debe tener al menos 4 caracteres"
-        return True, ""
+        if self._auth_ctrl is None:
+            return False, "Servicio de autenticación no disponible"
+        return self._auth_ctrl.validate_password(
+            password, self._entry_user.get().strip())
 
     # ------------------------------------------------------------------
     # Acciones

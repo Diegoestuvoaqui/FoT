@@ -132,8 +132,10 @@ def main() -> None:
     )
     logger.info("Base de datos lista en %s", DB_PATH)
 
-    auth_service = AuthService(db)
-    auth_service.ensure_admin_exists()
+    auth_service = AuthService(
+        db,
+        allow_self_register=settings.allow_self_register,
+    )
 
     mqtt_bus = MQTTEventBus("127.0.0.1", settings.broker_port)
     mqtt_bus.start()
@@ -296,7 +298,7 @@ def main() -> None:
         login_panel.grid(row=0, column=0, sticky="nsew")
         login_panel_ref[0] = login_panel
 
-        if not auth_service._db.user_exists():
+        if not auth_service.user_exists():
             login_panel.set_first_user_info(True)
 
         logger.info("Sesión cerrada, volviendo a pantalla de login")
@@ -310,16 +312,18 @@ def main() -> None:
     login_panel.grid(row=0, column=0, sticky="nsew")
     login_panel_ref[0] = login_panel
 
-    if not auth_service._db.user_exists():
+    if not auth_service.user_exists():
         login_panel.set_first_user_info(True)
 
     def on_close_process() -> None:
         logger.info("Cerrando FoT Estación Base")
         if main_window_ref[0]:
-            cleanup = getattr(main_window_ref[0], "session_cleanup", None)
-            if cleanup:
-                cleanup()
-        board_service.stop()  
+            session_cleanup = getattr(main_window_ref[0], "session_cleanup", None)
+            if session_cleanup:
+                session_cleanup()
+            main_window_ref[0].cleanup()
+            main_window_ref[0] = None
+        board_service.stop()
         sensor_manager.disconnect_all()
         mqtt_bus.stop()
         if discovery is not None:

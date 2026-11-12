@@ -2,11 +2,15 @@ import logging
 import tkinter as tk
 
 import customtkinter as ctk
-
 from controller.bluetooth_controller import BluetoothController
 from controller.wifi_controller import WiFiController
+from domain.boards import Board
+
+from ui.dialogs.bluetooth_scan_dialog import BluetoothScanDialog
+from ui.dialogs.confirm_dialog import ConfirmDialog
 from ui.dialogs.firmware_dialog import FirmwareDialog
 from ui.dialogs.register_dialog import RegisterDialog
+from ui.dialogs.wifi_scan_dialog import WiFiScanDialog
 from ui.panels.admin_panel import AdminPanel
 from ui.panels.arduino_panel import ArduinoPanel
 from ui.panels.dht11_panel import DHT11Panel
@@ -19,11 +23,6 @@ from ui.widgets.notification_panel import NotificationPanel
 from ui.widgets.side_bar import SideBar
 from ui.widgets.status_bar import StatusBar
 from ui.widgets.top_bar import TopBar
-from domain.boards import Board
-
-from ui.dialogs.bluetooth_scan_dialog import BluetoothScanDialog
-from ui.dialogs.wifi_scan_dialog import WiFiScanDialog
-from ui.dialogs.confirm_dialog import ConfirmDialog
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +53,8 @@ class MainWindow:
         self._current_panel: ctk.CTkFrame | None = None
         self._notif_panel_visible = False
         self._removing = False
+        self._closed = False
+        self._wifi_after_id: str | None = None
 
         self._notif_mgr = NotificationManager(root)
 
@@ -156,6 +157,7 @@ class MainWindow:
         self._navigate("login")
 
     def _setup_authenticated_ui(self) -> None:
+        self._closed = False
         self._side_bar.grid()
         self._top_bar.grid()
         self._status_bar.grid()
@@ -170,8 +172,12 @@ class MainWindow:
         self._event_ctrl.set_ui_callback(self._on_event_logged)
 
         # Observers de UI (solo pintan; el negocio ya se hizo en proceso).
+        # El identify NO se registra aquí: el pipeline de proceso de main.py
+        # (SensorManager → MQTTDataDispatcher/USB/BT → BoardService) lo procesa
+        # y BoardService._notify_change empuja el Board actualizado a
+        # _apply_board_update. Registrarlo aquí duplicaría la notificación
+        # (Fase 4 del plan).
         self._sensor_manager.add_reading_observer(self._on_sensor_reading)
-        self._sensor_manager.add_identify_observer(self._on_sensor_identify)
 
         self._current_panel = None
         self._navigate("dht11")
@@ -448,8 +454,6 @@ class MainWindow:
         )
 
     # --- Observers de UI (no hacen trabajo de negocio) ---
-    def _on_sensor_reading(self, board_id: str, data: dict):
-        self._root.after(0, lambda: self._update_sensor_ui(board_id, data))
 
     def _update_sensor_ui(self, board_id: str, data: dict):
         board = self._board_ctrl.get_board(board_id)
@@ -458,35 +462,49 @@ class MainWindow:
         self.arduino_panel.update_reading(board_id, data)
         self._status_bar.mark_message_received()
 
-    def _on_sensor_identify(self, board_id: str, data: dict):
-        # El BoardService ya procesó el identify desde main.py (observer de
-        # proceso). Aquí solo notificamos al usuario.
-        logger.info("Identificado %s: %s", board_id, data)
-        self._notif_mgr.notify(
-            "Placa identificada",
-            f"{board_id}: {data.get('name', 'Unknown')} v{data.get('version', '?')}",
-            tipo="info",
-        )
+
+    def _ui(self, fn, *args) -> None:
+        """Ejecuta fn en el hilo de Tk solo si la sesión sigue activa
+        y el root sigue existiendo. Evita TclError si un after(0, …)
+        llega justo después de cleanup()/destroy()."""
+        def _run():
+            if self._closed:
+                return
+            try:
+                if not self._root.winfo_exists():
+                    return
+            except tk.TclError:
+                return
+            fn(*args)
+        try:
+            self._root.after(0, _run)
+        except (tk.TclError, RuntimeError):
+            pass
+
+    def _on_sensor_reading(self, board_id: str, data: dict):
+        self._ui(self._update_sensor_ui, board_id, data)
 
     def _on_board_updated(self, board: Board):
-        self._root.after(0, lambda: self.arduino_panel.update_board(board))
-        if (self._board_ctrl.board_belongs_to_panel(board.id, "dht11")
+        self._ui(self._apply_board_update, board)
+
+    def _apply_board_update(self, board: Board):
+        self.arduino_panel.update_board(board)
+        if (self._user is not None
+                and self._board_ctrl.board_belongs_to_panel(board.id, "dht11")
                 and board.usuario_id == self._user.id):
-            self._root.after(0, lambda: self.dht11_panel.update_board(board))
+            self.dht11_panel.update_board(board)
         boards = self._board_ctrl.get_boards()
         self._top_bar.update_boards_count(len(boards))
         self._status_bar.update_usb_count(
-            sum(1 for b in boards if b.conn == "usb")
-        )
+            sum(1 for b in boards if b.conn == "usb"))
 
     def _on_event_logged(self, text: str, tipo: str):
-        self._root.after(0, lambda: self.dht11_panel.add_event(text, tipo))
+        self._ui(self._apply_event, text, tipo)
+
+    def _apply_event(self, text: str, tipo: str):
+        self.dht11_panel.add_event(text, tipo)
         if "error" in tipo.lower() or "fallo" in tipo.lower():
-            self._notif_mgr.notify(
-                "Alerta del sistema",
-                text,
-                tipo="error",
-            )
+            self._notif_mgr.notify("Alerta del sistema", text, tipo="error")
             self._status_bar.update_alerts(1)
 
     def _on_bell_clicked(self):
@@ -564,13 +582,34 @@ class MainWindow:
                 self._board_ctrl.get_boards(), users)
 
     def cleanup(self):
+        if self._closed:
+            return
+        self._closed = True
+        self._stop_wifi_checker()
         self._status_bar.stop_clock()
+
+        # Desregistro de observers de UI: idempotente y seguro para
+        # cualquier ruta de cierre (logout con sesión, session_cleanup +
+        # cleanup externo desde main.py, cierre de proceso). Los observers
+        # de proceso siguen vivos en main.py.
+        try:
+            self._sensor_manager.remove_reading_observer(self._on_sensor_reading)
+        except Exception:
+            logger.exception("Error quitando observer de lectura")
+
         self._event_ctrl.cleanup()
         self._board_ctrl.cleanup()
+
         if self._notif_mgr:
             self._notif_mgr.remove_observer(self._top_bar._update_badge)
         if self._notif_panel is not None:
             self._notif_panel.destroy()
+            self._notif_panel = None
+
+        try:
+            self.arduino_panel.set_current_user(None)
+        except Exception:
+            logger.exception("Error reseteando usuario de ArduinoPanel")
 
     def _on_register_scanned_device(self, board_id: str, address: str,
                                     conn_type: str) -> None:
@@ -680,10 +719,9 @@ class MainWindow:
             tipo="info",
         )
 
-        # Solo desregistramos los observers de UI. Los de proceso viven en main.py.
-        self._sensor_manager.remove_reading_observer(self._on_sensor_reading)
-        self._sensor_manager.remove_identify_observer(self._on_sensor_identify)
-        self.arduino_panel.set_current_user(None)
+        # cleanup() ya desregistra el observer de lectura de UI, resetea
+        # ArduinoPanel y cancela los after-loops. No hace falta (ni se debe)
+        # tocar observers de identify aquí: viven en main.py.
         self.cleanup()
 
         if self._notif_panel_visible:
@@ -704,8 +742,29 @@ class MainWindow:
             self._on_logout()
 
     def _start_wifi_checker(self):
-        self._check_wifi()
-        self._root.after(5000, self._start_wifi_checker)
+        self._stop_wifi_checker()
+        self._wifi_tick()
+
+    def _stop_wifi_checker(self):
+        if self._wifi_after_id is not None:
+            try:
+                self._root.after_cancel(self._wifi_after_id)
+            except tk.TclError:
+                pass
+            self._wifi_after_id = None
+
+    def _wifi_tick(self):
+        self._wifi_after_id = None
+        if self._closed:
+            return
+        try:
+            self._check_wifi()
+        except tk.TclError:
+            return  # widgets destruidos: no reprogramar
+        except Exception:
+            logger.exception("Fallo en _check_wifi")
+        if not self._closed:
+            self._wifi_after_id = self._root.after(5000, self._wifi_tick)
 
     def _check_wifi(self):
         """Refresca el estado del broker en la UI. Los timeouts y el paso

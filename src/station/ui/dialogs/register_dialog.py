@@ -15,7 +15,8 @@ class RegisterDialog(ctk.CTkToplevel):
     """
 
     def __init__(self, parent, auth_controller, on_success=None,
-                 allow_admin_creation: bool = False):
+                 allow_admin_creation: bool = False,
+                 current_user=None):
         super().__init__(parent)
         self.title("FoT — Crear cuenta")
         self.geometry("600x600")
@@ -34,6 +35,7 @@ class RegisterDialog(ctk.CTkToplevel):
 
         self._entry_user.focus()
         self.wait_window()
+        self._current_user = current_user
 
     # ------------------------------------------------------------------
     # Layout
@@ -126,13 +128,10 @@ class RegisterDialog(ctk.CTkToplevel):
         return True, ""
 
     def _validate_password(self, password: str) -> tuple[bool, str]:
-        if not password:
-            return False, "La contraseña es obligatoria"
-        if " " in password:
-            return False, "La contraseña no puede contener espacios"
-        if len(password) < 4:
-            return False, "La contraseña debe tener al menos 4 caracteres"
-        return True, ""
+        if self._auth_ctrl is None:
+            return False, "Servicio de autenticación no disponible"
+        return self._auth_ctrl.validate_password(
+            password, self._entry_user.get().strip())
 
     # ------------------------------------------------------------------
     # Acciones
@@ -160,8 +159,8 @@ class RegisterDialog(ctk.CTkToplevel):
         role = "user"
         if self._combo_role:
             role = self._combo_role.get()
-
-        ok, error = self._auth_ctrl.register(username, password, role)
+        
+        ok, error = self._auth_ctrl.register(username, password, role, actor=self._current_user)
         if ok:
             if self._on_success:
                 self._on_success(username)
